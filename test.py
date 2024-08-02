@@ -1,7 +1,7 @@
 import torch
 import lightning as L
 import numpy as np
-from hit_server import hitDataModule
+from flowgen import hitDataModule
 from time import sleep
 from mpi4py import MPI
 

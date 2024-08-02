@@ -1,12 +1,12 @@
 import lightning as L
-from model import tfno
-from hit_server import hitDataModule
+from flowgen import tfno, hitDataModule
 from lightning.pytorch.plugins.environments import MPIEnvironment
 from argparse import ArgumentParser
 import torch
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.strategies import DDPStrategy
-from loss import nrmse_loss, rH1loss
+from flowgen.utils.loss import nrmse_loss, rH1loss
+import os
 
 
 checkpoint_callback = ModelCheckpoint(save_top_k=1, monitor="val_loss_avg", mode='min', auto_insert_metric_name=True)
@@ -61,8 +61,29 @@ def main(args):
     train_data_dirs = [data_path+"train/case1", data_path+"train/case2", data_path+"train/case3"]
     val_dirs = [data_path+"case1", data_path+"case2", data_path+"case3"]
     dm = hitDataModule(val_dirs=val_dirs, seq_len =[10,100], data_dir="train_online", batch_size=args.batch_size, reservoir_treshold=200, target_dims=[32,32,32])
-    model = tfno(loss=args.loss, lr=args.lr, precision='full', modes=16, num_classes=len(train_data_dirs), use_ema=args.use_ema, affine=False)
+    model = tfno(loss=args.loss, lr=args.lr, precision='full', modes=16, num_classes=len(train_data_dirs), use_ema=args.use_ema, affine=False, model=args.model)
 
+    if args.save_path:
+         
+         root_dir = args.save_path + '/{}_'.format(args.model)
+         if not os.path.exists(root_dir):
+            os.mkdir(root_dir)
+        
+         create_directory = True
+         i = 1
+         while create_directory:
+            if os.path.exists(root_dir):
+                case_name_folder = "-%d" % i
+                save_path = os.path.join(root_dir, case_name_folder)
+                i += 1
+            else:
+                save_path     = os.path.join(root_dir, case_name_folder)
+                create_directory   = False
+        
+    else:
+        save_path = os.getcwd()
+    
+    
     trainer = L.Trainer(max_epochs=args.epochs, devices=args.devices, num_nodes=args.nodes, 
                         accelerator='gpu',
                         plugins=MPIEnvironment(),
@@ -72,13 +93,13 @@ def main(args):
                         accumulate_grad_batches=8,
                         gradient_clip_val=5.0, gradient_clip_algorithm="norm",
                         strategy=DDPStrategy(find_unused_parameters=True),
+                        default_root_dir=save_path
                         )
 
     trainer.fit(model, dm, ckpt_path=args.ckpt_path)
 
 if __name__ == "__main__":
      parser = ArgumentParser()
-     parser.add_argument("--model_type", type=str)
      parser.add_argument("--loss", type=str)
      parser.add_argument("--devices", type=int, default=1)
      parser.add_argument("--modes", type=int, default=16)
@@ -90,5 +111,7 @@ if __name__ == "__main__":
      parser.add_argument("--seq_len", type=int, nargs='+', default=[10, 100])
      parser.add_argument("--use_affine", action='store_true')
      parser.add_argument("--use_ema", action='store_true')
+     parser.add_argument("--model", type=str, default='TFNO_t')
+     parser.add_argument('--save_path', type=str, default=None)
      args = parser.parse_args()
      main(args)

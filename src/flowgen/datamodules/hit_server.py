@@ -1,7 +1,7 @@
 from torch.utils.data import Dataset
 from typing import List
-from hit_offline_dm import create_data_list, hitDataset
-from server_baseclass import adios2DataModule
+from flowgen.datamodules.hit_offline_dm import create_data_list, hitDataset
+from flowgen.datamodules.server_baseclass import adios2DataModule
 from lightning.pytorch.utilities import CombinedLoader
 from torch.utils.data import DataLoader
 

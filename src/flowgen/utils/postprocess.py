@@ -1,7 +1,3 @@
-import sys
-
-sys.path.append('./')
-
 from matplotlib import pyplot as plt
 import torch
 from jaxfluids.post_process import load_data, create_contourplot
@@ -163,13 +159,14 @@ def mae(x, y, p = 1):
 
 class Postprocess:
     
-    def __init__(self, dataloader, model, savepath, device):
+    def __init__(self, dataloader, model, savepath, device, val_dir):
         
         self.dataloader = dataloader
         self.model = model
         self.savepath = savepath
         os.mkdir(self.savepath)
-        self.device = device        
+        self.device = device
+        self.val_dir = val_dir        
         
         self.results = dict()
         for dl_idx in range(len(self.dataloader.iterables)):
@@ -245,12 +242,12 @@ class Postprocess:
             self.results[dl_idx] = results
 
         # PLOT
-        data_ref_1 = np.loadtxt('/scratch/cfd/gonzalez/hit_online_training/04_HIT_decay'+"/reference_data/spyropoulos_case1.txt", skiprows=3)
-        data_ref_2 = np.loadtxt('/scratch/cfd/gonzalez/hit_online_training/04_HIT_decay'+"/reference_data/spyropoulos_case2.txt", skiprows=3)
-        data_ref_3 = np.loadtxt('/scratch/cfd/gonzalez/hit_online_training/04_HIT_decay'+"/reference_data/spyropoulos_case3.txt", skiprows=3)
+        data_ref_1 = np.loadtxt("./reference_data/spyropoulos_case1.txt", skiprows=3)
+        data_ref_2 = np.loadtxt("./reference_data/spyropoulos_case2.txt", skiprows=3)
+        data_ref_3 = np.loadtxt("./reference_data/spyropoulos_case3.txt", skiprows=3)
 
         quantities = ["density", "pressure", "temperature", "velocityX", "velocityY", "velocityZ"]
-        cell_centers, cell_sizes, times, data_dict = load_data("/scratch/cfd/gonzalez/hit_online_training/04_HIT_decay/case1/HIT-9/domain", quantities)
+        cell_centers, cell_sizes, times, data_dict = load_data(self.val_dir + "/HIT/domain", quantities)
 
         fig, ax = plt.subplots(figsize=(5,5))
         times = times[1:100]

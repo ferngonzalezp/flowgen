@@ -3,14 +3,11 @@ import lightning as L
 import numpy as np
 import torch.nn.functional as F
 from neuralop.models import TFNO
-from loss import nrmse_loss, rH1loss, spec_loss
-from adaptivePcfLoss import AdaptivePCFLLoss
-from TFNO_t import TFNO_t
-from GL_TFNO_t import GL_TFNO_t
-import sys
-sys.path.append('/scratch/cfd/gonzalez/HIT_online_learning/RevIN')
-
-from RevIN import RevIN
+from flowgen.utils.loss import nrmse_loss, rH1loss, spec_loss
+from flowgen.utils.adaptivePcfLoss import AdaptivePCFLLoss
+from flowgen.models.TFNO_t import TFNO_t
+from flowgen.models.GL_TFNO_t import GL_TFNO_t
+from flowgen.models.RevIN import RevIN
 
 class tfno(L.LightningModule):
     def __init__(self, loss, lr, modes = 8, precision='full', factorization='tucker', rank=0.42, layers=4, num_classes=3, use_ema=False, affine=False, model='TFNO_t'):

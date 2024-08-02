@@ -1,14 +1,14 @@
 import lightning as L
-from model import tfno
-from hit_offline_dm import hitOfflineDataModule
+from flowgen import tfno, hitOfflineDataModule
 from lightning.pytorch.plugins.environments import MPIEnvironment
 from lightning.pytorch.strategies import FSDPStrategy, DDPStrategy
 from argparse import ArgumentParser
 import torch
-from postprocess import Postprocess
+from flowgen.utils.postprocess import Postprocess
 from lightning.pytorch.callbacks import ModelCheckpoint
 from torch.distributed.fsdp import MixedPrecision
 from mpi4py import MPI
+import os
 
 checkpoint_callback = ModelCheckpoint(save_top_k=1, monitor="val_loss_avg", mode='min', auto_insert_metric_name=True)
 checkpoint_rst = ModelCheckpoint()
@@ -42,6 +42,27 @@ def main(args):
         #sharding_strategy="NO_SHARD",
     )
 
+    if args.save_path:
+         
+         root_dir = args.save_path + '/{}_'.format(args.model)
+         if not os.path.exists(root_dir):
+            os.mkdir(root_dir)
+        
+         create_directory = True
+         i = 1
+         while create_directory:
+            if os.path.exists(root_dir):
+                case_name_folder = "-%d" % i
+                save_path = os.path.join(root_dir, case_name_folder)
+                i += 1
+            else:
+                save_path     = os.path.join(root_dir, case_name_folder)
+                create_directory   = False
+        
+    else:
+        save_path = os.getcwd()
+        
+
     trainer = L.Trainer(max_epochs=args.epochs, devices=args.devices, num_nodes=args.nodes, 
                         accelerator='gpu',
                         plugins=MPIEnvironment(),
@@ -50,6 +71,7 @@ def main(args):
                         #detect_anomaly=False,
                         gradient_clip_val=5.0, gradient_clip_algorithm="norm",
                         accumulate_grad_batches=4,
+                        default_root_dir=save_path
                         )
 
     trainer.fit(model, dm, ckpt_path=args.ckpt_path)
@@ -61,13 +83,12 @@ def main(args):
         best_model_pth = checkpoint_callback.best_model_path
         model = tfno.load_from_checkpoint(best_model_pth, loss=args.loss, lr=args.lr, precision='full', modes=16, num_classes=len(train_data_dirs), model=args.model)
         dm.setup('fit')
-        postpro = Postprocess(dm.val_dataloader(), model, trainer.log_dir+'/results', device)
+        postpro = Postprocess(dm.val_dataloader(), model, trainer.log_dir+'/results', device, val_dir[0])
         postpro.run()
 
 
 if __name__ == "__main__":
      parser = ArgumentParser()
-     parser.add_argument("--model_type", type=str)
      parser.add_argument("--loss", type=str)
      parser.add_argument("--devices", type=int, default=1)
      parser.add_argument("--modes", type=int, default=16)
@@ -79,5 +100,6 @@ if __name__ == "__main__":
      parser.add_argument("--seq_len", type=int, nargs='+', default=[10, 100])
      parser.add_argument("--use_affine", action='store_true')
      parser.add_argument("--model", type=str, default='TFNO_t')
+     parser.add_argument('--save_path', type=str, default=None)
      args = parser.parse_args()
      main(args)

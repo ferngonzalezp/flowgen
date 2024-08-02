@@ -17,8 +17,6 @@ export PSM2_CUDA=0 #must be set to 0
 export CC=mpicc
 export CXX=mpiCC
 export FC=mpif90
-export PYTHONPATH="${PYTHONPATH}:/scratch/cfd/gonzalez/adios2/cratch/cfd/gonzalez/pyenvs/phydll_train/lib/python3.9/site-packages"
-export LD_LIBRARY_PATH=/scratch/cfd/gonzalez/adios2:$LD_LIBRARY_PATH
 module list
 
 # EXTRA COMMANDS ########
