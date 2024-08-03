@@ -21,13 +21,10 @@ dynamic = ["version", "dependencies"]
 write_to = "src/flowgen/_version.py"
 
 [tool.setuptools]
-packages = ["flowgen"]
+packages = ["src/flowgen"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
 [project.optional-dependencies]
 dev = ["pytest"]
-
-[project.scripts]
-your-command = "your_project_name.module:function"
