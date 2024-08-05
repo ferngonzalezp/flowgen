@@ -99,12 +99,12 @@ class tfno(L.LightningModule):
         #assert not torch.isnan(pred).any(), "NaN in pred of pushforward"
         return loss
     
-    def causality_loss(self, y):
+    def causality_loss(self, y, time):
         
         input = y[...,0]
         pred = []
         for i in range(y.shape[-1]-1):
-            pred.append(self(input))
+            pred.append(self(input, time[...,i], time[...,i+1]))
             input = pred[-1]
         pred = torch.stack(pred, dim=-1)
         
@@ -125,6 +125,8 @@ class tfno(L.LightningModule):
         loss = 0.0
         for i in range(pred.shape[-1]):
                 loss += w[i] * nrmse_loss(pred[...,i], y[...,1+i]) + w[i] * rH1loss(pred[...,i], y[...,1+i])
+        for i in range(len(w)):
+            self.log_dict({'w_{}'.format(i+1): w[i].detach()}, prog_bar=True)
         return loss / (i+1)
 
     def training_step(self, batch, batch_idx):
@@ -159,7 +161,7 @@ class tfno(L.LightningModule):
                 loss = h1_loss + nrmse + pf_loss
                 values = {'nrmse': nrmse, 'H1_loss': h1_loss, 'PF_loss': pf_loss}
             elif self.loss == 'causality':
-                loss = self.causality_loss(y)
+                loss = self.causality_loss(y, time)
                 values = {'causality_loss': loss}
             elif self.loss == 'dynamic':
                 labels = batch[2]
@@ -192,12 +194,13 @@ class tfno(L.LightningModule):
             return loss
     
     def on_train_epoch_end(self):
-        pf_loss_mean = torch.stack(self.pf_loss_train).mean()
-        #if pf_loss_mean < 2e-1 and self.pf_steps < 8:
-        if (self.trainer.current_epoch + 1) % 25 == 0 and self.pf_steps < 8:
-            self.pf_steps += 1
-        print(self.pf_steps)
-        self.pf_loss_train.clear()
+        if self.loss == 'pushfroward':
+            pf_loss_mean = torch.stack(self.pf_loss_train).mean()
+            #if pf_loss_mean < 2e-1 and self.pf_steps < 8:
+            if (self.trainer.current_epoch + 1) % 25 == 0 and self.pf_steps < 8:
+                self.pf_steps += 1
+            print(self.pf_steps)
+            self.pf_loss_train.clear()
     
     def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_closure):
     # Add your custom logic to run directly before `optimizer.step()`

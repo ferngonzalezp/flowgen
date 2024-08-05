@@ -52,8 +52,10 @@ class RevIN(nn.Module):
         x = x / self.stdev
 
         #minmax norm
-        self.std_min = torch.min(x, dim=dim2reduce, keepdim=True).detach()
-        self.std_max = torch.max(x, dim=dim2reduce, keepdim=True).detach()
+        self.std_min, _ = torch.min(x.reshape(bs,c,-1), dim=-1, keepdim=True)
+        self.std_min = self.std_min.reshape(bs, c, *[1]*len(dim))
+        self.std_max, _ = torch.max(x.reshape(bs,c,-1), dim=-1, keepdim=True)
+        self.std_max = self.std_max.reshape(bs, c, *[1]*len(dim))
         x = 2 * (x - self.std_min) / (self.std_max - self.std_min + 1e-8) - 1
 
         if self.affine:

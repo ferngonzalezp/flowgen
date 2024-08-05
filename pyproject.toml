@@ -20,8 +20,11 @@ dynamic = ["version", "dependencies"]
 [tool.setuptools_scm]
 write_to = "src/flowgen/_version.py"
 
+[tool.setuptools.packages.find]
+where = ["src", "solvers"]  # list of folders that contain the packages
+
 [tool.setuptools]
-packages = ["src/flowgen"]
+package-dir = {"" = "src"}
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
