@@ -3,6 +3,7 @@ requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
+
 name = "FLOWGEN"
 authors = [
     {name = "Fernando Gonzalez", email = "gonzalez@cerfacs.fr"},
@@ -15,13 +16,18 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+
 dynamic = ["version", "dependencies"]
 
 [tool.setuptools_scm]
 write_to = "src/flowgen/_version.py"
 
 [tool.setuptools.packages.find]
-where = ["src", "solvers"]  # list of folders that contain the packages
+where = ["src"]  # list of folders that contain the packages
+include = ["flowgen*"]  # adjust this to match your package name
+
+[tool.setuptools.package-data]
+"*" = ["*.txt", "*.rst"]  # include any data files your package needs
 
 [tool.setuptools]
 package-dir = {"" = "src"}

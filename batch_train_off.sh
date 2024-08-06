@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=offline
 #SBATCH --partition=gpua30
-#SBATCH --nodes=2
+#SBATCH --nodes=1
 #SBATCH --time=6:00:00
 #SBATCH --output=offline.%j
-#SBATCH --ntasks-per-node=4
+#SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4
-#SBATCH --gres=gpu:4
+#SBATCH --gres=gpu:1
 #SBATCH --exclusive
 
 # LOAD MODULES ##########
@@ -20,10 +20,11 @@ export FC=mpif90
 module list
 
 # EXTRA COMMANDS ########
-source ../pyenvs/phydll_train/bin/activate
+source ../pyenvs/flowgen/bin/activate
 #########################
 
 # EXECUTION ########
-mpirun -np $(($SLURM_NTASKS)) python train_offline.py --loss pushforward --devices 4 --nodes $SLURM_NNODES --batch_size 1 --lr 1e-3 --epochs 300 --model TFNO_t  #--ckpt_path /scratch/cfd/gonzalez/HIT_online_learning2/lightning_logs/version_1410081/checkpoints/epoch=23-step=6768.ckpt
+mpirun -np $(($SLURM_NTASKS)) python train_offline.py --save_path experiments --loss pushforward --devices 1 --nodes $SLURM_NNODES --batch_size 1 --lr 1e-3 --epochs 1 --model TFNO_t  \
+ #--ckpt_path /scratch/cfd/gonzalez/HIT_online_learning2/lightning_logs/version_1410081/checkpoints/epoch=23-step=6768.ckpt
 #########################
 

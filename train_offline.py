@@ -22,7 +22,7 @@ class val_avg_metric(L.Callback):
             pl_module.val_loss_avg = [0] * len(val_loss_avg)
             
 def main(args):
-    data_path = '/scratch/cfd/gonzalez/hit_online_training/04_HIT_decay/'
+    data_path = '/scratch/cfd/gonzalez/hit_online_training/04_HIT_decay/' #Path to dataset location
     train_data_dirs = [data_path+"train/case1", data_path+"train/case2", data_path+"train/case3"]
     val_dir = [data_path+"case1", data_path+"case2", data_path+"case3"]
     dm = hitOfflineDataModule(val_dirs = val_dir, data_dir = train_data_dirs, batch_size =  args.batch_size, seq_len=args.seq_len)
@@ -44,25 +44,27 @@ def main(args):
 
     if args.save_path:
          
-         root_dir = args.save_path + '/{}_'.format(args.model)
-         if not os.path.exists(root_dir):
-            os.mkdir(root_dir)
+         
+         if not os.path.exists(args.save_path):
+            os.mkdir(args.save_path)
         
+         case_name_folder = '{}_{}'.format(args.model, args.loss)
          create_directory = True
          i = 1
+         save_path = os.path.join(args.save_path, case_name_folder)
          while create_directory:
-            if os.path.exists(root_dir):
-                case_name_folder = "-%d" % i
-                save_path = os.path.join(root_dir, case_name_folder)
+            if os.path.exists(save_path):
+                case_name_folder_new = case_name_folder + "-%d" % i
+                save_path = os.path.join(args.save_path, case_name_folder_new)
                 i += 1
             else:
-                save_path     = os.path.join(root_dir, case_name_folder)
                 create_directory   = False
         
     else:
         save_path = os.getcwd()
         
 
+    print(save_path)
     trainer = L.Trainer(max_epochs=args.epochs, devices=args.devices, num_nodes=args.nodes, 
                         accelerator='gpu',
                         plugins=MPIEnvironment(),

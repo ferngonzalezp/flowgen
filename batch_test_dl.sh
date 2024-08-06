@@ -24,7 +24,7 @@ export FI_PSM2_DISCONNECT=1
 export FI_OFI_RXM_USE_SRX=1
 export FI_PROVIDER=tcp
 export PYTHONFAULTHANDLER=2
-source ../pyenvs/phydll_train/bin/activate
+source ../pyenvs/flowgen/bin/activate
 #########################
 
 # EXECUTION ########

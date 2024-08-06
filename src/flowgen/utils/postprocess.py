@@ -1,7 +1,7 @@
 from matplotlib import pyplot as plt
 import torch
 from jaxfluids.post_process import load_data, create_contourplot
-from loss import nrmse_loss
+from flowgen.utils.loss import nrmse_loss
 import numpy as np
 from torch.fft import fftn
 from numpy import sqrt,zeros,arange, ones
@@ -109,7 +109,7 @@ def plot_tkespec_1d(knyquist, wavenumbers, tkespec, title):
 
 def plot_fields(field,pred,varname,times):
     plt.rc("font", size=16, family='serif')
-    rel_ae =  abs(field-pred)/(abs(field) + 1e-7)
+    rel_ae = torch.sqrt(abs(field-pred)**2/(abs(field)**2 + 1e-7))
     N = field.shape[-1]
     idx = np.random.randint(field.shape[0])
     time_steps = np.arange(10,N,(N-10)//3)
@@ -117,37 +117,47 @@ def plot_fields(field,pred,varname,times):
     fig.suptitle('{} - Ground truth vs. Prediction'.format(varname),fontsize=24)
     ax = axs[0,0]
     cm = ax.imshow(field[idx,...,time_steps[0]], cmap='jet')
+    fig.colorbar(cm, ax = axs[0,0])
     ax.set_title('t = {:.2f} $ t / \\tau$'.format(times[time_steps[0]]/0.85))
     ax.set_ylabel('Ground truth')
     ax = axs[0,1]
     cm = ax.imshow(field[idx,...,time_steps[1]], cmap='jet')
+    fig.colorbar(cm, ax = axs[0,1])
     ax.set_title('t = {:.2f} $ t / \\tau$'.format(times[time_steps[1]]/0.85))
     ax = axs[0,2]
     cm = ax.imshow(field[idx,...,time_steps[2]], cmap='jet')
+    fig.colorbar(cm, ax = axs[0,2])
     ax.set_title('t = {:.2f} $ t / \\tau$'.format(times[time_steps[2]]/0.85))
     ax = axs[0,3]
     cm = ax.imshow(field[idx,...,time_steps[3]], cmap='jet')
+    fig.colorbar(cm, ax = axs[0,3])
     ax.set_title('t = {:.2f} $ t / \\tau$'.format(times[time_steps[3]]/0.85))
     ax = axs[1,0]
     cm = ax.imshow(pred[idx,...,time_steps[0]], cmap='jet')
+    fig.colorbar(cm, ax = axs[1,0])
     ax.set_ylabel('Prediction')
     ax = axs[1,1]
     cm = ax.imshow(pred[idx,...,time_steps[1]], cmap='jet')
+    fig.colorbar(cm, ax = axs[1,1])
     ax = axs[1,2]
     cm = ax.imshow(pred[idx,...,time_steps[2]], cmap='jet')
+    fig.colorbar(cm, ax = axs[1,2])
     ax = axs[1,3]
     cm = ax.imshow(pred[idx,...,time_steps[3]], cmap='jet')
-    fig.colorbar(cm, ax = axs[:2])
+    fig.colorbar(cm, ax = axs[1,3])
     ax = axs[2,0]
     cm = ax.imshow(rel_ae[idx,...,time_steps[0]], cmap='jet')
+    fig.colorbar(cm, ax = axs[2,0])
     ax.set_ylabel('Error')
     ax = axs[2,1]
     cm = ax.imshow(rel_ae[idx,...,time_steps[1]], cmap='jet')
+    fig.colorbar(cm, ax = axs[2,1])
     ax = axs[2,2]
     cm = ax.imshow(rel_ae[idx,...,time_steps[2]], cmap='jet')
+    fig.colorbar(cm, ax = axs[2,2])
     ax = axs[2,3]
     cm = ax.imshow(rel_ae[idx,...,time_steps[3]], cmap='jet')
-    fig.colorbar(cm, ax = axs[2])
+    fig.colorbar(cm, ax = axs[2,3])
     plt.close()
     return fig
 
@@ -166,7 +176,7 @@ class Postprocess:
         self.savepath = savepath
         os.mkdir(self.savepath)
         self.device = device
-        self.val_dir = val_dir        
+        self.val_dir = val_dir
         
         self.results = dict()
         for dl_idx in range(len(self.dataloader.iterables)):
