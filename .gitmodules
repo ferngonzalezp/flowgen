@@ -1,0 +1,3 @@
+[submodule "JAXFLUIDS"]
+	path = JAXFLUIDS
+	url = /scratch/cfd/gonzalez/flowgen/solvers/JAXFLUIDS
