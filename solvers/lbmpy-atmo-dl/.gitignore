@@ -1,0 +1,16 @@
+*.pyc
+*.pvsm
+*.png
+*.pdf
+*.xmf
+#.swp
+*.idea*
+.coverage
+.eggs
+*.egg-info
+build
+dist
+*.egg*
+.DS_Store
+.vscode
+*.log
