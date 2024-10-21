@@ -10,11 +10,13 @@
 
 # LOAD MODULES ##########
 module purge 
-module load python/3.9.5 mpi/openmpi/4.1.1_gcc94 lib/hdf5/1.10.1_gcc tools/cmake/3.23.0
+module load python/3.9.5 mpi/openmpi/4.1.1_gcc112 lib/hdf5/1.10.1_gcc tools/cmake/3.23.0
 export PSM2_CUDA=0
 export CC=mpicc
 export CXX=mpiCC
 export FC=mpif90
+export PYTHONPATH="${PYTHONPATH}:/scratch/cfd/gonzalez/adios2_flowgen/cratch/cfd/gonzalez/pyenvs/flowgen/lib/python3.9/site-packages"
+export LD_LIBRARY_PATH=/scratch/cfd/gonzalez/adios2_flowgen:$LD_LIBRARY_PATH
 module list
 
 # EXTRA COMMANDS ########

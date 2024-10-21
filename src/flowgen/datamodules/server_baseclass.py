@@ -7,6 +7,7 @@ import os
 from typing import List
 from mpi4py import MPI
 from tensordict.tensordict import TensorDict
+import time
 
 class adios2StreamDataset(Dataset):
     def __init__(self, data_dir: str, 
@@ -30,7 +31,7 @@ class adios2StreamDataset(Dataset):
 
         seen = []
         unseen = []
-        self.reservoir = TensorDict.load_memmap("./reservoir")
+        self.reservoir = TensorDict.load_memmap(self.data_dir+"/reservoir")
             
     def __len__(self):
         return self.reservoir.size(0)
@@ -131,6 +132,8 @@ class adios2DataModule(L.LightningDataModule):
         #Initialize ADIOS2
         self.comm = MPI.COMM_WORLD
         rank = self.comm.Get_rank()
+
+        self.wait_for_sst_file(self.data_dir)
         if rank ==0:
             self.adios = adios2.ADIOS(self.adios_cfg)
             self.io     = self.adios.DeclareIO("readerIO")
@@ -188,7 +191,7 @@ class adios2DataModule(L.LightningDataModule):
                                                 pass
         del var
         print("Reservoir Full!")
-        reservoir.memmap("./reservoir")
+        reservoir.memmap(self.data_dir+"/reservoir")
 
     def setup(self, stage: str):
         # Assign train/val datasets for use in dataloaders
@@ -200,3 +203,14 @@ class adios2DataModule(L.LightningDataModule):
                           sampler = RandomSampler(self.train_ds, replacement=True), 
                           num_workers=0)
         return dataloader
+    
+    def wait_for_sst_file(self, directory):
+        """
+        Waits for a file with the .sst extension to appear in the specified directory.
+        """
+        while True:
+            if os.path.exists(directory):
+                for filename in os.listdir(directory):
+                    if filename.endswith('.sst'):
+                        return os.path.join(directory, filename)
+            time.sleep(1)

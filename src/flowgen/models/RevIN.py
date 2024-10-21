@@ -52,11 +52,11 @@ class RevIN(nn.Module):
         x = x / self.stdev
 
         #minmax norm
-        self.std_min, _ = torch.min(x.reshape(bs,c,-1), dim=-1, keepdim=True)
-        self.std_min = self.std_min.reshape(bs, c, *[1]*len(dim))
-        self.std_max, _ = torch.max(x.reshape(bs,c,-1), dim=-1, keepdim=True)
-        self.std_max = self.std_max.reshape(bs, c, *[1]*len(dim))
-        x = 2 * (x - self.std_min) / (self.std_max - self.std_min + 1e-8) - 1
+        #self.std_min, _ = torch.min(x.reshape(bs,c,-1), dim=-1, keepdim=True)
+        #self.std_min = self.std_min.reshape(bs, c, *[1]*len(dim))
+        #elf.std_max, _ = torch.max(x.reshape(bs,c,-1), dim=-1, keepdim=True)
+        #self.std_max = self.std_max.reshape(bs, c, *[1]*len(dim))
+        #x = 2 * (x - self.std_min) / (self.std_max - self.std_min + 1e-8) - 1
 
         if self.affine:
             gamma = self.affine_weight_in(x.reshape(bs,c,-1)).reshape(bs,c,*dim)
@@ -73,7 +73,7 @@ class RevIN(nn.Module):
             x = torch.einsum('bf... , bf... -> bf...', x, gamma)
             x = x + beta
         #inverse min-max
-        x = (1 + x) / 2  * (self.std_max - self.std_min) + self.std_min
+        #x = (1 + x) / 2  * (self.std_max - self.std_min) + self.std_min
         x = x * self.stdev
         x = x + self.mean
         return x

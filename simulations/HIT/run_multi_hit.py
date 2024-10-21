@@ -2,9 +2,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 from jaxfluids import InputReader, Initializer, SimulationManager
 import json
-realizations = 150
-for i, sim in enumerate(["HIT_decay_ma0.2.json", "HIT_decay_ma0.4.json", "HIT_decay_ma0.6.json"]):
-    for n in range(10,10 + realizations):
+realizations = 10
+initial_seed = 10
+for i, sim in enumerate(["HIT_decay_ma0.2.json",
+                          "HIT_decay_ma0.4.json", 
+                          "HIT_decay_ma0.6.json",
+                          ]):
+    for n in range(initial_seed, initial_seed + realizations):
         
         # SETUP SIMULATION
         seed = n + i * realizations

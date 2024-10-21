@@ -22,9 +22,9 @@ class val_avg_metric(L.Callback):
             pl_module.val_loss_avg = [0] * len(val_loss_avg)
             
 def main(args):
-    data_path = '/scratch/cfd/gonzalez/hit_online_training/04_HIT_decay/' #Path to dataset location
+    data_path = '/scratch/cfd/gonzalez/HIT_LES_COMP/' #Path to dataset location
     train_data_dirs = [data_path+"train/case1", data_path+"train/case2", data_path+"train/case3"]
-    val_dir = [data_path+"case1", data_path+"case2", data_path+"case3"]
+    val_dir = [data_path+"val/case1", data_path+"val/case2", data_path+"val/case3"]
     dm = hitOfflineDataModule(val_dirs = val_dir, data_dir = train_data_dirs, batch_size =  args.batch_size, seq_len=args.seq_len)
     affine=False
     if args.use_affine:

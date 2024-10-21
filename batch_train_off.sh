@@ -6,7 +6,7 @@
 #SBATCH --output=offline.%j
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:4
 #SBATCH --exclusive
 
 # LOAD MODULES ##########
@@ -17,6 +17,8 @@ export PSM2_CUDA=0 #must be set to 0
 export CC=mpicc
 export CXX=mpiCC
 export FC=mpif90
+export PYTHONPATH="${PYTHONPATH}:/scratch/cfd/gonzalez/adios2_flowgen/cratch/cfd/gonzalez/pyenvs/flowgen/lib/python3.9/site-packages"
+export LD_LIBRARY_PATH=/scratch/cfd/gonzalez/adios2_flowgen:$LD_LIBRARY_PATH
 module list
 
 # EXTRA COMMANDS ########
@@ -24,7 +26,7 @@ source ../pyenvs/flowgen/bin/activate
 #########################
 
 # EXECUTION ########
-mpirun -np $(($SLURM_NTASKS)) python train_offline.py --save_path experiments --loss pushforward --devices 1 --nodes $SLURM_NNODES --batch_size 1 --lr 1e-3 --epochs 1 --model TFNO_t  \
+mpirun -np $(($SLURM_NTASKS)) python train_offline.py --save_path experiments --loss pushforward --devices 4 --nodes $SLURM_NNODES --batch_size 1 --lr 1e-3 --epochs 100 --model TFNO_t  \
  #--ckpt_path /scratch/cfd/gonzalez/HIT_online_learning2/lightning_logs/version_1410081/checkpoints/epoch=23-step=6768.ckpt
 #########################
 

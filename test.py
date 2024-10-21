@@ -7,7 +7,7 @@ from mpi4py import MPI
 
 reservoir = 10
 dm = hitDataModule(val_dirs = ["/scratch/cfd/gonzalez/hit_online_training/04_HIT_decay/case1", "/scratch/cfd/gonzalez/hit_online_training/04_HIT_decay/case2", 
-                               "/scratch/cfd/gonzalez/hit_online_training/04_HIT_decay/case3"], seq_len=(10, 100), data_dir="train_online", batch_size=4, reservoir_treshold=reservoir, target_dims=[32,32,32])
+                               "/scratch/cfd/gonzalez/hit_online_training/04_HIT_decay/case3"], seq_len=(10, 100), data_dir="simulations/HIT/train_online", batch_size=4, reservoir_treshold=reservoir, target_dims=[32,32,32])
 comm = MPI.COMM_WORLD
 dm.prepare_data()
 dm.setup(stage='fit')
