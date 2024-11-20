@@ -10,6 +10,7 @@ from numpy import pi
 from scipy.signal import convolve
 import random
 import os
+import pandas as pd
 
 def movingaverage(interval, window_size):
     window = ones(int(window_size)) / float(window_size)
@@ -174,7 +175,8 @@ class Postprocess:
         self.dataloader = dataloader
         self.model = model
         self.savepath = savepath
-        os.mkdir(self.savepath)
+        if os.path.exists(self.savepath) != True:
+          os.mkdir(self.savepath)
         self.device = device
         self.val_dir = val_dir
         
@@ -185,6 +187,9 @@ class Postprocess:
             self.results[dl_idx]['rms'] = dict()
             self.results[dl_idx]['rms']['real'] = 0.0
             self.results[dl_idx]['rms']['pred'] = 0.0
+            self.results[dl_idx]['k'] = dict()
+            self.results[dl_idx]['k']['real'] = 0.0
+            self.results[dl_idx]['k']['pred'] = 0.0
             self.results[dl_idx]['mae'] = []
             self.results[dl_idx]['spectrum'] = dict()
             self.results[dl_idx]['spectrum']['real'] = []
@@ -193,7 +198,7 @@ class Postprocess:
             self.results[dl_idx]['mean']['real'] = []
             self.results[dl_idx]['mean']['pred'] = []
             
-    def run(self):
+    def run(self, unroll_steps):
         super().__init__()
         cumsum = dict()
         cumsum['real'] = [0.0] * len(self.dataloader.iterables)
@@ -208,19 +213,26 @@ class Postprocess:
                 time = batch[-1].to(self.device)
                 input = y[...,0].to(self.device)
                 for i in range(y.shape[-1]-1):
-                    pred = self.model(input, time[...,i], time[...,i+1])
+                    with torch.autocast(device_type="cuda", dtype=torch.float16):
+                      pred = self.model(input, time[...,i], time[...,i+1])
                     y_pred.append(pred)
-                    input = pred
+                    if (i+1) % unroll_steps ==0 :
+                      input = y[...,i+1].to(self.device)
+                    else:
+                      input = pred
                 y_pred = torch.stack(y_pred, dim=-1)
                 
                 results = self.results[dataloader_idx]
                     
                 cumsum['pred'][dataloader_idx] += torch.sum(y_pred.cpu(), dim=0)
                 cumsum['real'][dataloader_idx] += torch.sum(y[...,1:], dim=0).cpu()
-                
+                #Compute rho rms
                 results['rms']['pred'] += torch.sum(y_pred.std(dim=(2,3,4)).cpu(), dim=0)
                 results['rms']['real'] += torch.sum(y[...,1:].std(dim=(2,3,4)).cpu(), dim=0)
-                
+                #compute kinetic energy
+                results['k']['pred'] += torch.sum(0.5 * torch.sum(y_pred[:,3:].std(dim=(2,3,4)).cpu()**2, dim=1, keepdim=True), dim=0)
+                results['k']['real'] += torch.sum(0.5 * torch.sum(y[:,3:,...,1:].std(dim=(2,3,4)).cpu()**2, dim=1, keepdim=True), dim=0)
+
                 N[dataloader_idx] += y.shape[0]
                 
                 results['rmse'].append(nrmse_loss(y_pred.cpu(), y[...,1:]))
@@ -243,6 +255,8 @@ class Postprocess:
             results['mean']['pred'] = cumsum['pred'][dl_idx]/N[dl_idx]
             results['rms']['real'] =  results['rms']['real']/N[dl_idx]
             results['rms']['pred'] =  results['rms']['pred']/N[dl_idx]
+            results['k']['real'] =  results['k']['real']/N[dl_idx]
+            results['k']['pred'] =  results['k']['pred']/N[dl_idx]
             results['rmse'] = torch.mean(torch.stack(results['rmse']))
             results['mae'] = torch.mean(torch.stack(results['mae']), dim=0)
 
@@ -291,7 +305,31 @@ class Postprocess:
         #ax.vlines(times[ctff[1]]/0.85,0.05,0.1, linestyles='dashed')
         #ax.vlines(times[ctff[2]]/0.85,0.125,0.20, linestyles='dashed')
 
-        plt.savefig(self.savepath+'/rho_rms_{}modes.png'.format(self.model.modes))
+        plt.savefig(self.savepath+'/rho_rms.png')
+
+        #Plot kinetic energy decay
+        fig, ax = plt.subplots(figsize=(5,5))
+        for idx in range(len(self.dataloader.iterables)):
+                
+            ax.plot(times/0.85, self.results[idx]['k']['real'][0], '-', label='LES_case{}'.format(idx+1))
+            ax.plot(times/0.85, self.results[idx]['k']['pred'][0], '--', markevery=5, linewidth=3, 
+                    label='TFNO_case{}'.format(idx+1))
+
+        #ax.set_ylim([0, 0.16])
+        #ax.set_yticks([0, 0.05, 0.1, 0.15])
+        #ax.text(0.7, 0.15, "Case 1", transform=ax.transAxes, fontsize=12,
+        #    verticalalignment='top')
+        #ax.text(0.7, 0.35, "Case 2", transform=ax.transAxes, fontsize=12,
+        #        verticalalignment='top')
+        #ax.text(0.7, 0.55, "Case 3", transform=ax.transAxes, fontsize=12,
+        #        verticalalignment='top')
+        ax.set_xlabel(r"$t / \tau$")
+        ax.set_ylabel(r"$\overline{u'u'}$")
+        #ax.set_xlim([0, 5])
+        #ax.set_box_aspect(1)
+        ax.legend()
+
+        plt.savefig(self.savepath+'/kinetic_energy.png')
         
         #Plot MAE
         fig, ax = plt.subplots(figsize=(5,5))
@@ -301,7 +339,12 @@ class Postprocess:
         ax.set_xlabel(r"$t / \tau$")
         ax.set_ylabel("r-MAE")
         ax.legend()
-        plt.savefig(self.savepath+'/mae_{}modes.png'.format(self.model.modes))
+        plt.savefig(self.savepath+'/mae.png')
+        MAE = 0.0
+        for idx in range(len(self.dataloader.iterables)):
+          MAE += self.results[idx]['mae'].mean().unsqueeze(0)
+        df = pd.DataFrame({'MAE': MAE/(idx+1)})
+        df.to_csv(self.savepath+'/results.csv')
 
         for dl_idx in range(len(self.dataloader.iterables)):
             results = self.results[dl_idx]

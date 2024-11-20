@@ -22,14 +22,15 @@ class val_avg_metric(L.Callback):
             pl_module.val_loss_avg = [0] * len(val_loss_avg)
             
 def main(args):
-    data_path = '/scratch/cfd/gonzalez/HIT_LES_COMP/' #Path to dataset location
+    torch.set_float32_matmul_precision('high')
+    data_path = args.data_path #Path to dataset location
     train_data_dirs = [data_path+"train/case1", data_path+"train/case2", data_path+"train/case3"]
     val_dir = [data_path+"val/case1", data_path+"val/case2", data_path+"val/case3"]
     dm = hitOfflineDataModule(val_dirs = val_dir, data_dir = train_data_dirs, batch_size =  args.batch_size, seq_len=args.seq_len)
     affine=False
     if args.use_affine:
         affine=True
-    model = tfno(loss=args.loss, lr=args.lr, precision='full', modes=args.modes, num_classes=len(train_data_dirs), affine=affine, model=args.model)
+    model = tfno(loss=args.loss, lr=args.lr, precision='full', modes=args.modes, num_classes=len(train_data_dirs), affine=affine, model=args.model, weight_decay=args.weight_decay)
 
     fsdp_strategy = FSDPStrategy(
         # Default: Shard weights, gradients, optimizer state (1 + 2 + 3)
@@ -70,10 +71,13 @@ def main(args):
                         plugins=MPIEnvironment(),
                         callbacks=[checkpoint_callback, checkpoint_rst, val_avg_metric()],
                         strategy=DDPStrategy(find_unused_parameters=True),
+                        precision=args.precision,
                         #detect_anomaly=False,
-                        gradient_clip_val=5.0, gradient_clip_algorithm="norm",
-                        accumulate_grad_batches=4,
-                        default_root_dir=save_path
+                        gradient_clip_val=1.0, gradient_clip_algorithm="norm",
+                        accumulate_grad_batches=args.accumulate_grad_batches,
+                        default_root_dir=save_path,
+                        overfit_batches=args.overfit_batches,
+                        #limit_train_batches=1.0,
                         )
 
     trainer.fit(model, dm, ckpt_path=args.ckpt_path)
@@ -83,25 +87,33 @@ def main(args):
     if rank==0:
         device = torch.device('cuda')
         best_model_pth = checkpoint_callback.best_model_path
-        model = tfno.load_from_checkpoint(best_model_pth, loss=args.loss, lr=args.lr, precision='full', modes=16, num_classes=len(train_data_dirs), model=args.model)
+        model = tfno.load_from_checkpoint(best_model_pth, loss=args.loss, lr=args.lr, precision='full', modes=16, num_classes=len(train_data_dirs), model=args.model,
+                                          lr_warmup=args.lr_warmup, lr_warmup_steps=args.lr_warmup_steps)
         dm.setup('fit')
         postpro = Postprocess(dm.val_dataloader(), model, trainer.log_dir+'/results', device, val_dir[0])
-        postpro.run()
+        postpro.run(unroll_steps=100)
 
 
 if __name__ == "__main__":
      parser = ArgumentParser()
+     parser.add_argument("--data_path", type=str)
      parser.add_argument("--loss", type=str)
      parser.add_argument("--devices", type=int, default=1)
      parser.add_argument("--modes", type=int, default=16)
      parser.add_argument("--nodes", type=int, default=1)
      parser.add_argument("--epochs", type=int, default=-1)
      parser.add_argument("--ckpt_path", type=str, default=None)
+     parser.add_argument("--precision", type=str, default="32")
      parser.add_argument("--batch_size", type=int, default=4)
      parser.add_argument("--lr", type=float, default=1e-3)
+     parser.add_argument("--weight_decay", type=float, default=1e-3)
      parser.add_argument("--seq_len", type=int, nargs='+', default=[10, 100])
      parser.add_argument("--use_affine", action='store_true')
      parser.add_argument("--model", type=str, default='TFNO_t')
      parser.add_argument('--save_path', type=str, default=None)
+     parser.add_argument('--overfit_batches', type=int, default=0)
+     parser.add_argument("--accumulate_grad_batches", type=int, default=1)
+     parser.add_argument("--lr_warmup", action='store_true')
+     parser.add_argument("--lr_warmup_steps", type=int, default=5)
      args = parser.parse_args()
      main(args)

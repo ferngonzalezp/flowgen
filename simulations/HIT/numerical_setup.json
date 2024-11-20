@@ -39,7 +39,7 @@
         "quantities": {
             "primes": ["density", "velocityX", "velocityY", "velocityZ", "pressure", "temperature"]
         },
-        "stream": true,
-        "write_on_disk": false
+        "stream": false,
+        "write_on_disk": true
     }
 }

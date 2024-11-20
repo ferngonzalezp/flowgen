@@ -8,11 +8,12 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:4
 #SBATCH --exclusive
+#SBATCH --exclude=krakenngpu07
 
 # LOAD MODULES ##########
 module purge 
 module load lib/hdf5/1.10.1_gcc tools/cmake/3.23.0
-module load mpi/openmpi/4.1.1_gcc94
+module load mpi/openmpi/4.1.1_gcc112
 export PSM2_CUDA=0 #must be set to 0
 export CC=mpicc
 export CXX=mpiCC
@@ -31,6 +32,8 @@ export PYTHONFAULTHANDLER=2
 source ../pyenvs/flowgen/bin/activate
 #########################
 # EXECUTION ########
-mpirun -np 4 python train.py --loss pushforward --devices 4 --batch_size 1 --lr 1e-3
+mpirun -np $(($SLURM_NTASKS)) python train_online.py --loss pushforward --devices 4 --nodes $SLURM_NNODES --batch_size 1 --lr 1e-3 --model TFNO_t \
+ --weight_decay 1e-3 --accumulate_grad_batches $((64 / $SLURM_NTASKS)) --save_path experiments --steps 28300  --stream_path /scratch/cfd/gonzalez/flowgen/simulations/HIT/train_online \
+ --data_path /scratch/cfd/gonzalez/HIT_LES_COMP/
 #########################
 

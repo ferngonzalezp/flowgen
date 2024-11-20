@@ -2,16 +2,18 @@ import matplotlib.pyplot as plt
 import numpy as np
 from jaxfluids import InputReader, Initializer, SimulationManager
 import json
-realizations = 10
+realizations = np.inf
 initial_seed = 10
-for i, sim in enumerate(["HIT_decay_ma0.2.json",
+
+n =  initial_seed
+seed = initial_seed
+while True:
+    for i, sim in enumerate(["HIT_decay_ma0.2.json",
                           "HIT_decay_ma0.4.json", 
                           "HIT_decay_ma0.6.json",
                           ]):
-    for n in range(initial_seed, initial_seed + realizations):
-        
         # SETUP SIMULATION
-        seed = n + i * realizations
+        seed += i  
         with open(sim, 'r') as json_file:
             modified_sim = json.load(json_file)
 
@@ -28,3 +30,8 @@ for i, sim in enumerate(["HIT_decay_ma0.2.json",
         # RUN SIMULATION
         buffer_dictionary = initializer.initialization()
         sim_manager.simulate(buffer_dictionary)
+    
+    n += 1
+    seed += 1    
+    if n >= realizations:
+        break

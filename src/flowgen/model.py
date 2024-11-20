@@ -7,14 +7,18 @@ from flowgen.utils.loss import nrmse_loss, rH1loss, spec_loss
 from flowgen.utils.adaptivePcfLoss import AdaptivePCFLLoss
 from flowgen.models.TFNO_t import TFNO_t
 from flowgen.models.GL_TFNO_t import GL_TFNO_t
+from flowgen.models import Attention_Unet
 from flowgen.models.RevIN import RevIN
 
 class tfno(L.LightningModule):
-    def __init__(self, loss, lr, modes = 8, precision='full', factorization='tucker', rank=0.42, layers=4, num_classes=3, use_ema=False, affine=False, model='TFNO_t'):
+    def __init__(self, loss, lr, modes = 8, precision='full', factorization='tucker', rank=0.42, layers=4, num_classes=3, use_ema=False, affine=False, model='TFNO_t',
+     weight_decay=1e-3, lr_warmup = False, lr_warmup_steps = 1000):
         super().__init__()
         self.affine = affine
         self.rev_in = RevIN(6, affine=self.affine)
         self.model_type = model
+        self.lr_warmup = lr_warmup
+        self.lr_warmup_steps = lr_warmup_steps
         if model=='TFNO':
             self.model = TFNO(n_modes=(modes,modes,modes),
                             hidden_channels=64,
@@ -37,6 +41,8 @@ class tfno(L.LightningModule):
 
             self.model = GL_TFNO_t(modes = (modes,modes,modes), precision=precision, factorization=factorization, 
                     rank=rank, layers=layers, hidden_dim=64, in_channels=6, out_channels=6)
+        if model=='Attn_UNET':
+            self.model = Attention_Unet(6,6, dims=[128,128,128,128], depths=[2,2,2,2])
         
         if use_ema:
             self.ema_model  = torch.optim.swa_utils.AveragedModel(self.model, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(0.9)).requires_grad_(False)
@@ -45,12 +51,13 @@ class tfno(L.LightningModule):
 
         self.epsilon = 1e-1
         self.lr = lr
+        self.weight_decay =  weight_decay
         self.val_loss_avg = [0] * num_classes
         self.dynamic_loss = AdaptivePCFLLoss(num_classes=num_classes, gamma=2.0, stability_factor=0.5)
         self.automatic_optimization=True
         self.modes = modes
         self.pf_loss_train = []
-        self.pf_steps = 1
+        self.pf_steps = 8
         self.ema = use_ema
 
     def forward(self, inputs, t0, t):
@@ -230,15 +237,28 @@ class tfno(L.LightningModule):
             
                           
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=1e-3)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+        if self.lr_warmup:
+            scheduler1 =  torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1e-4, total_iters=self.lr_warmup_steps)
+            steps = max(self.trainer.max_epochs, self.trainer.max_steps)
+            if self.trainer.max_epochs > self.trainer.max_steps:
+                steps = self.trainer.estimated_stepping_batches
+            scheduler2 = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 100 * self.trainer.num_training_batches, eta_min=1e-6)
+            scheduler3 = torch.optim.lr_scheduler.ConstantLR(optimizer, factor=1e-6 / self.lr, total_iters=steps)
+            scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer, [scheduler1, scheduler2, scheduler3], milestones=[sef.lr_warmup_steps, 100 * self.trainer.num_training_batches])
+        else:
+            steps = max(self.trainer.max_epochs, self.trainer.max_steps)
+            if self.trainer.max_epochs > self.trainer.max_steps:
+                steps = self.trainer.estimated_stepping_batches
+            scheduler =  torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, steps, eta_min=1e-6)
         lr_scheduler_config = {
             # REQUIRED: The scheduler instance
             #"scheduler": torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=300, eta_min=1e-6, T_mult=2),
-            "scheduler": torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 300),
+            "scheduler": scheduler,
             # The unit of the scheduler's step size, could also be 'step'.
             # 'epoch' updates the scheduler on epoch end whereas 'step'
             # updates it after a optimizer update.
-            "interval": "epoch",
+            "interval": "step",
             # How many epochs/steps should pass between calls to
             # `scheduler.step()`. 1 corresponds to updating the learning
             # rate after every epoch/step.
