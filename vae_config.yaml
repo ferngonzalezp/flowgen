@@ -1,0 +1,12 @@
+# Define the VAE hyperparameters
+input_dim: 6           # Single input channel for CFD data (e.g., scalar fields like velocity magnitude)
+out_dim: 6
+embed_dim: 64          # Latent embedding dimension
+patch_size: [4, 4, 4]  # Spatial patch size
+spatial_heads: 4       # Number of attention heads for spatial blocks
+temporal_heads: 2      # Number of attention heads for temporal blocks
+mlp_dim: 128           # MLP hidden dimension
+num_spatial_blocks: 2  # Number of spatial attention blocks
+num_temporal_blocks: 2 # Number of temporal attention blocks
+time_downsample: 5     # Temporal downsampling factor
+latent_dim: 32         # Latent space dimension
