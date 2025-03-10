@@ -47,7 +47,7 @@
             "T_ref": 1.0,
             "rho_ref": 1.0,
             "ic_type": "IC1",
-            "seed": 305
+            "seed": 186
         }
     },
     "material_properties": {

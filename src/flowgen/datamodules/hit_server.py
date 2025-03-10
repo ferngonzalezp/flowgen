@@ -10,12 +10,12 @@ class hitDataModule(adios2DataModule):
      def __init__(self, val_dirs, seq_len: List[int] = [10, 100], data_dir: str = "./train", 
                  batch_size: int = 16, reservoir_treshold: int = 128,
                  var_names = ["density", "velocityX", "velocityY", "velocityZ", "pressure", "temperature", "time"], 
-                 adios_cfg: str = "./adios2.xml", target_dims = [32,32,32]):
+                 adios_cfg: str = "./adios2.xml", target_dims = [32,32,32], restart_reservoir=True):
 
         super().__init__(data_dir, 
                  batch_size, reservoir_treshold ,
                  var_names, 
-                 adios_cfg , target_dims)
+                 adios_cfg , target_dims, restart_reservoir)
 
         self.val_dirs = val_dirs
         self.val_data = []

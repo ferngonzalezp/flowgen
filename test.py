@@ -6,8 +6,11 @@ from time import sleep
 from mpi4py import MPI
 
 reservoir = 10
-dm = hitDataModule(val_dirs = ["/scratch/cfd/gonzalez/hit_online_training/04_HIT_decay/case1", "/scratch/cfd/gonzalez/hit_online_training/04_HIT_decay/case2", 
-                               "/scratch/cfd/gonzalez/hit_online_training/04_HIT_decay/case3"], seq_len=(10, 100), data_dir="simulations/HIT/train_online", batch_size=4, reservoir_treshold=reservoir, target_dims=[32,32,32])
+data_path = '/scratch/cfd/gonzalez/HIT_LES_COMP/'
+cases = ['case1', 'case2', 'case3']
+val_dirs = [data_path+f"val/{case_name}" for case_name in cases]
+print(val_dirs)
+dm = hitDataModule(val_dirs = val_dirs, seq_len=(10, 100), data_dir="simulations/HIT/train_online", batch_size=4, reservoir_treshold=reservoir, target_dims=[32,32,32])
 comm = MPI.COMM_WORLD
 dm.prepare_data()
 dm.setup(stage='fit')

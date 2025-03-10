@@ -58,12 +58,18 @@ class replace_criterion(L.Callback):
 
 def main(args):
     data_path = args.data_path
-    val_dirs = [data_path+"case1", data_path+"case2", data_path+"case3"]
-    dm = hitDataModule(val_dirs=val_dirs, seq_len =[10,100], data_dir=args.stream_path, batch_size=args.batch_size, reservoir_treshold=200, target_dims=[32,32,32])
+    val_dirs = [data_path+f"val/{case_name}" for case_name in args.cases]
+    if args.ckpt_path:
+        restart_reservoir = None
+    else:
+        restart_reservoir = True
+    dm = hitDataModule(val_dirs=val_dirs, seq_len =[10,100], data_dir=args.stream_path, batch_size=args.batch_size, 
+        reservoir_treshold=200, target_dims=[32,32,32], restart_reservoir=restart_reservoir)
     affine=False
     if args.use_affine:
         affine=True
-    model = tfno(loss=args.loss, lr=args.lr, precision='full', modes=args.modes, num_classes=len(val_dirs), affine=affine, model=args.model, weight_decay=args.weight_deca)
+    model = tfno(loss=args.loss, lr=args.lr, precision='full', modes=args.modes, num_classes=len(val_dirs), affine=affine, model=args.model, 
+            weight_decay=args.weight_decay, lr_warmup=args.lr_warmup, lr_warmup_steps=args.lr_warmup_steps)
 
     if args.save_path:
          
@@ -71,7 +77,7 @@ def main(args):
          if not os.path.exists(args.save_path):
             os.mkdir(args.save_path)
         
-         case_name_folder = 'online{}_{}'.format(args.model, args.loss)
+         case_name_folder = '{}_{}_online'.format(args.model, args.loss)
          create_directory = True
          i = 1
          save_path = os.path.join(args.save_path, case_name_folder)
@@ -86,17 +92,18 @@ def main(args):
     else:
         save_path = os.getcwd()
     
-    
     trainer = L.Trainer(max_steps=args.steps, devices=args.devices, num_nodes=args.nodes, 
                         accelerator='gpu',
                         plugins=MPIEnvironment(),
-                        callbacks = [stopping_callback(), replace_criterion(), 
+                        callbacks=[stopping_callback(), replace_criterion(), 
                                      checkpoint_callback, checkpoint_rst, val_avg_metric()],
                         val_check_interval=500, check_val_every_n_epoch=None,
-                        accumulate_grad_batches=args.accumulate_grad_batches,
-                        gradient_clip_val=5.0, gradient_clip_algorithm="norm",
                         strategy=DDPStrategy(find_unused_parameters=True),
-                        default_root_dir=save_path
+                        precision=args.precision,
+                        accumulate_grad_batches=args.accumulate_grad_batches,
+                        gradient_clip_val=1.0, gradient_clip_algorithm="norm",
+                        default_root_dir=save_path,
+                        overfit_batches=args.overfit_batches,
                         )
 
     trainer.fit(model, dm, ckpt_path=args.ckpt_path)
@@ -119,6 +126,11 @@ if __name__ == "__main__":
      parser.add_argument("--use_ema", action='store_true')
      parser.add_argument("--model", type=str, default='TFNO_t')
      parser.add_argument('--save_path', type=str, default=None)
+     parser.add_argument('--overfit_batches', type=int, default=0)
      parser.add_argument("--accumulate_grad_batches", type=int, default=1)
+     parser.add_argument("--lr_warmup", action='store_true')
+     parser.add_argument("--lr_warmup_steps", type=int, default=5)
+     parser.add_argument("--precision", type=str, default="32")
+     parser.add_argument("--cases", type=str, nargs='+', default=["case1", "case2", "case3"])
      args = parser.parse_args()
      main(args)

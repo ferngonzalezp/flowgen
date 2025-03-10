@@ -6,11 +6,11 @@ initial_seed = 42
 
 n =  initial_seed
 seed = initial_seed
-sim = "HIT_forced_ma0.4.json"
+sim = "/scratch/cfd/gonzalez/flowgen/simulations/HIT/HIT_decay_ma1.2.json"
 
 # SETUP SIMULATION
 
-input_reader = InputReader(sim, "forced_numerical_setup.json")
+input_reader = InputReader(sim, "numerical_setup_forced.json")
 initializer  = Initializer(input_reader)
 
 sim_manager  = SimulationManager(input_reader)

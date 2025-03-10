@@ -24,13 +24,15 @@ class val_avg_metric(L.Callback):
 def main(args):
     torch.set_float32_matmul_precision('high')
     data_path = args.data_path #Path to dataset location
-    train_data_dirs = [data_path+"train/case1", data_path+"train/case2", data_path+"train/case3"]
-    val_dir = [data_path+"val/case1", data_path+"val/case2", data_path+"val/case3"]
+
+    train_data_dirs = [data_path+f"train/{case_name}" for case_name in args.cases]
+    val_dir = [data_path+f"val/{case_name}" for case_name in args.cases]
     dm = hitOfflineDataModule(val_dirs = val_dir, data_dir = train_data_dirs, batch_size =  args.batch_size, seq_len=args.seq_len)
     affine=False
     if args.use_affine:
         affine=True
-    model = tfno(loss=args.loss, lr=args.lr, precision='full', modes=args.modes, num_classes=len(train_data_dirs), affine=affine, model=args.model, weight_decay=args.weight_decay)
+    model = tfno(loss=args.loss, lr=args.lr, precision='full', modes=args.modes, num_classes=len(train_data_dirs), affine=affine, model=args.model, 
+            weight_decay=args.weight_decay, lr_warmup=args.lr_warmup, lr_warmup_steps=args.lr_warmup_steps)
 
     fsdp_strategy = FSDPStrategy(
         # Default: Shard weights, gradients, optimizer state (1 + 2 + 3)
@@ -65,7 +67,6 @@ def main(args):
         save_path = os.getcwd()
         
 
-    print(save_path)
     trainer = L.Trainer(max_epochs=args.epochs, devices=args.devices, num_nodes=args.nodes, 
                         accelerator='gpu',
                         plugins=MPIEnvironment(),
@@ -90,7 +91,11 @@ def main(args):
         model = tfno.load_from_checkpoint(best_model_pth, loss=args.loss, lr=args.lr, precision='full', modes=16, num_classes=len(train_data_dirs), model=args.model,
                                           lr_warmup=args.lr_warmup, lr_warmup_steps=args.lr_warmup_steps)
         dm.setup('fit')
-        postpro = Postprocess(dm.val_dataloader(), model, trainer.log_dir+'/results', device, val_dir[0])
+        if '16' in args.precision:
+            dtype = 'half'
+        else:
+            dtype = None
+        postpro = Postprocess(dm.val_dataloader(), model, trainer.log_dir+'/results', device, val_dir[0], dtype=dtype)
         postpro.run(unroll_steps=100)
 
 
@@ -108,6 +113,7 @@ if __name__ == "__main__":
      parser.add_argument("--lr", type=float, default=1e-3)
      parser.add_argument("--weight_decay", type=float, default=1e-3)
      parser.add_argument("--seq_len", type=int, nargs='+', default=[10, 100])
+     parser.add_argument("--cases", type=str, nargs='+', default=["case1", "case2", "case3"])
      parser.add_argument("--use_affine", action='store_true')
      parser.add_argument("--model", type=str, default='TFNO_t')
      parser.add_argument('--save_path', type=str, default=None)

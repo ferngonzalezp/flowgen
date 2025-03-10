@@ -33,6 +33,7 @@ from typing import Callable
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from jaxfluids.utilities import get_fluxes_xi
 from jaxfluids.solvers.riemann_solvers.riemann_solver import RiemannSolver

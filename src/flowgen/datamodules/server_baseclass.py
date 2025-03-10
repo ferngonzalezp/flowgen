@@ -120,7 +120,7 @@ class adios2DataModule(L.LightningDataModule):
     def __init__(self, data_dir: str, 
                  batch_size: int, reservoir_treshold: int ,
                  var_names : List[str], 
-                 adios_cfg: str , target_dims : List[int]):
+                 adios_cfg: str , target_dims : List[int], restart_reservoir: bool = True):
         super().__init__()
         self.data_dir = data_dir
         self.batch_size = batch_size
@@ -128,6 +128,7 @@ class adios2DataModule(L.LightningDataModule):
         self.adios_cfg = adios_cfg
         self.var_names = var_names
         self.target_dims = target_dims
+        self.restart_reservoir = restart_reservoir
 
         #Initialize ADIOS2
         self.comm = MPI.COMM_WORLD
@@ -153,45 +154,48 @@ class adios2DataModule(L.LightningDataModule):
 
     def prepare_data(self):
         print("Filling reservoir...")
-        nprocessed = 0
-        var = dict()
-        reservoir =  TensorDict({}, batch_size=[self.reservoir_treshold])
-        while nprocessed < self.reservoir_treshold:
-            for n_engine in range(len(self.engines)):
-                try:
-                    engine = self.engines[n_engine]
-                    engine.BeginStep(mode=adios2.StepMode.Read,timeoutSeconds=200.0)
-                    for i in range(len(self.var_names)):
-                        var_id = self.io.InquireVariable(self.var_names[i])
-                        if nprocessed == 0:
-                            var[self.var_names[i]] = np.zeros(var_id.Count(), dtype=var_id.Type())
-                            reservoir[self.var_names[i]] = torch.zeros((self.reservoir_treshold,*var_id.Count()))
-                        reservoir["seen"] = torch.zeros(self.reservoir_treshold, dtype=torch.int)
-                        reservoir["loss"] = torch.zeros(self.reservoir_treshold, dtype=torch.float)
-                        engine.Get(var_id, var[self.var_names[i]])
-                    engine.EndStep()
+        
+        if self.restart_reservoir:
+            nprocessed = 0
+            var = dict()
+            reservoir =  TensorDict({}, batch_size=[self.reservoir_treshold])
+            while nprocessed < self.reservoir_treshold:
+                for n_engine in range(len(self.engines)):
+                    try:
+                        engine = self.engines[n_engine]
+                        engine.BeginStep(mode=adios2.StepMode.Read,timeoutSeconds=200.0)
+                        for i in range(len(self.var_names)):
+                            var_id = self.io.InquireVariable(self.var_names[i])
+                            if nprocessed == 0:
+                                var[self.var_names[i]] = np.zeros(var_id.Count(), dtype=var_id.Type())
+                                reservoir[self.var_names[i]] = torch.zeros((self.reservoir_treshold,*var_id.Count()))
+                            reservoir["seen"] = torch.zeros(self.reservoir_treshold, dtype=torch.int)
+                            reservoir["loss"] = torch.zeros(self.reservoir_treshold, dtype=torch.float)
+                            engine.Get(var_id, var[self.var_names[i]])
+                        engine.EndStep()
 
-                    for i in range(len(self.var_names)):
-                        reservoir.set_at_(self.var_names[i], torch.from_numpy(var[self.var_names[i]]), nprocessed)
-                    nprocessed += 1
-                except:
-                            try:
-                                engine.Close()
-                            except:
-                                #SEARCH NEW SIMULATIONS
-                                        try:
-                                            sst_files = []
-                                            for root, dirs, files in os.walk(self.data_dir):
-                                                for file in files:
-                                                    if file.endswith(".sst"):
-                                                        sst_files.append(os.path.join(root, file.replace(".sst","")))
-                                                    for i in range(len(sst_files)):
-                                                            self.engines[n_engine] = (self.io.Open(os.path.relpath(sst_files[i]), adios2.Mode.Read))
-                                        except:
-                                                pass
-        del var
+                        for i in range(len(self.var_names)):
+                            reservoir.set_at_(self.var_names[i], torch.from_numpy(var[self.var_names[i]]), nprocessed)
+                        nprocessed += 1
+                    except:
+                                try:
+                                    engine.Close()
+                                except:
+                                    #SEARCH NEW SIMULATIONS
+                                            try:
+                                                sst_files = []
+                                                for root, dirs, files in os.walk(self.data_dir):
+                                                    for file in files:
+                                                        if file.endswith(".sst"):
+                                                            sst_files.append(os.path.join(root, file.replace(".sst","")))
+                                                        for i in range(len(sst_files)):
+                                                                self.engines[n_engine] = (self.io.Open(os.path.relpath(sst_files[i]), adios2.Mode.Read))
+                                            except:
+                                                    pass
+            del var
+            
+            reservoir.memmap(self.data_dir+"/reservoir")
         print("Reservoir Full!")
-        reservoir.memmap(self.data_dir+"/reservoir")
 
     def setup(self, stage: str):
         # Assign train/val datasets for use in dataloaders

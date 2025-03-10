@@ -38,7 +38,8 @@ import h5py
 import jax
 import jax.numpy as jnp
 import numpy as np
-import adios2.bindings as adios2
+#import adios2.bindings as adios2
+#import adios2
 
 from jaxfluids.domain_information import DomainInformation
 from jaxfluids.levelset.levelset_handler import LevelsetHandler
@@ -193,11 +194,13 @@ class OutputWriter:
                     self.write_h5file(buffer_dictionary)
                     if self.is_xdmf:
                         self.write_xdmffile(current_time)
+                self.write_restart(buffer_dictionary)
                 self.next_timestamp += self.save_dt
 
         if simulation_finish and self.is_xdmf:
             if self.write_on_disk:
-                self.write_timeseries_xdmffile()
+                self.write_timeseries_xdmffile()            
+
 
     def write_h5file(self, buffer_dictionary: Dict[str, Dict[str, jnp.ndarray]]) -> None:
 
@@ -289,7 +292,98 @@ class OutputWriter:
                 h5file.create_dataset(name="mass_flow_forcing/scalar_value", data=buffer_dictionary["mass_flow_forcing"]["scalar_value"], dtype="f8" if self.is_double else "f4")
                 h5file.create_dataset(name="mass_flow_forcing/PID_e_int", data=buffer_dictionary["mass_flow_forcing"]["PID_e_int"], dtype="f8" if self.is_double else "f4")
                 h5file.create_dataset(name="mass_flow_forcing/PID_e_new", data=buffer_dictionary["mass_flow_forcing"]["PID_e_new"], dtype="f8" if self.is_double else "f4")
-            
+      
+    def write_restart(self, buffer_dictionary: Dict[str, Dict[str, jnp.ndarray]]) -> None:
+
+        current_time = buffer_dictionary["time_control"]["current_time"]
+
+        filename = "rst.h5"
+
+        with h5py.File(os.path.join(self.save_path_domain, filename), "w") as h5file:
+
+            # MESH DATA
+            h5file.create_group(name="mesh")
+            h5file.create_dataset(name="mesh/gridX",        data=self.unit_handler.dimensionalize(self.cell_centers[0], "length"), dtype="f8")
+            h5file.create_dataset(name="mesh/gridY",        data=self.unit_handler.dimensionalize(self.cell_centers[1], "length"), dtype="f8")
+            h5file.create_dataset(name="mesh/gridZ",        data=self.unit_handler.dimensionalize(self.cell_centers[2], "length"), dtype="f8")
+            h5file.create_dataset(name="mesh/gridFX",       data=self.unit_handler.dimensionalize(self.cell_faces[0], "length"), dtype="f8")
+            h5file.create_dataset(name="mesh/gridFY",       data=self.unit_handler.dimensionalize(self.cell_faces[1], "length"), dtype="f8")
+            h5file.create_dataset(name="mesh/gridFZ",       data=self.unit_handler.dimensionalize(self.cell_faces[2], "length"), dtype="f8")
+            h5file.create_dataset(name="mesh/cellsizeX",    data=self.unit_handler.dimensionalize(self.cell_sizes[0], "length"), dtype="f8")
+            h5file.create_dataset(name="mesh/cellsizeY",    data=self.unit_handler.dimensionalize(self.cell_sizes[1], "length"), dtype="f8")
+            h5file.create_dataset(name="mesh/cellsizeZ",    data=self.unit_handler.dimensionalize(self.cell_sizes[2], "length"), dtype="f8")
+
+            # CURRENT TIME
+            h5file.create_dataset(name="time", data=self.unit_handler.dimensionalize(current_time, "time"), dtype="f8")
+
+            # COMPUTE TEMPERATURE
+            primes          = buffer_dictionary["material_fields"]["primes"]
+            temperature     = jnp.expand_dims(self.material_manager.get_temperature(primes[4], primes[0]), axis=0)
+            material_fields = {"primes": jnp.vstack([primes, temperature]), "cons": buffer_dictionary["material_fields"]["cons"]}
+
+            # CONSERAVITVES AND PRIMITIVES
+            for key in ["primes", "cons"]:
+                if key in self.output_quantities.keys():
+                    h5file.create_group(name=key)
+                    for quantity in self.output_quantities[key]:
+                        if self.levelset_type == "FLUID-FLUID":
+                            for i in range(2):
+                                quantity_name = "%s_%d" % (quantity, i)
+                                buffer = self.unit_handler.dimensionalize(material_fields[key][self.quantity_index[key][quantity], i, self.nhx, self.nhy, self.nhz], quantity)
+                                h5file.create_dataset(name="/".join([key, quantity_name]), data=buffer.T, dtype="f8" if self.is_double else "f4")
+                        else:
+                            buffer = self.unit_handler.dimensionalize(material_fields[key][self.quantity_index[key][quantity], self.nhx, self.nhy, self.nhz], quantity)
+                            h5file.create_dataset(name="/".join([key, quantity]), data=buffer.T, dtype="f8" if self.is_double else "f4")
+
+
+            if self.levelset_type != None:
+                
+                # LEVELSET QUANTITIES
+                if "levelset" in self.output_quantities.keys():
+                    h5file.create_group(name="levelset")
+                    levelset_quantities = {}
+                    levelset, volume_fraction   = buffer_dictionary["levelset_quantities"]["levelset"], buffer_dictionary["levelset_quantities"]["volume_fraction"]
+                    normal                      = self.levelset_handler.geometry_calculator.compute_normal(levelset)
+                    mask_real, _                = self.levelset_handler.compute_masks(levelset, volume_fraction)
+                    if self.levelset_type == "FLUID-FLUID":
+                        interface_velocity, interface_pressure, _ = self.levelset_handler.compute_interface_quantities(material_fields["primes"], levelset, volume_fraction)
+                        levelset_quantities["interface_velocity"] = self.unit_handler.dimensionalize(interface_velocity, "velocity")
+                        levelset_quantities["interface_pressure"] = self.unit_handler.dimensionalize(interface_pressure, "pressure")
+                        mask_real = mask_real[0]
+                    elif self.levelset_type == "FLUID-SOLID-DYNAMIC":
+                        interface_velocity = self.levelset_handler.compute_solid_interface_velocity(current_time)
+                        levelset_quantities["interface_velocity"] = self.unit_handler.dimensionalize(interface_velocity, "velocity")
+                    levelset_quantities.update({
+                        "levelset": self.unit_handler.dimensionalize(levelset[self.nhx, self.nhy, self.nhz], "length"),
+                        "volume_fraction": volume_fraction[...,self.nhx_,self.nhy_,self.nhz_], "mask_real": mask_real[...,self.nhx_,self.nhy_,self.nhz_],
+                        "normal": normal[...,self.nhx_,self.nhy_,self.nhz_]
+                        })
+                    for quantity in self.output_quantities["levelset"]:
+                        h5file.create_dataset(name="levelset/" + quantity, data=levelset_quantities[quantity].T, dtype="f8" if self.is_double else "f4")
+                
+                # CONSERVATIVES AND PRIMITIVES FOR REAL FLUID
+                if "real_fluid" in self.output_quantities.keys():
+                    h5file.create_group(name="real_fluid")
+                    for key in ["cons", "primes"]:
+                        real_buffer = self.compute_real_buffer(material_fields[key][...,self.nhx,self.nhy,self.nhz], buffer_dictionary["levelset_quantities"]["volume_fraction"][self.nhx_,self.nhy_,self.nhz_])
+                        for quantity in [quant for quant in self.output_quantities["real_fluid"] if quant in self.quantity_index[key].keys()]:
+                            real_state = self.unit_handler.dimensionalize(real_buffer[self.quantity_index[key][quantity]], quantity)
+                            h5file.create_dataset(name="real_fluid/" + quantity, data=real_state.T, dtype="f8" if self.is_double else "f4")
+
+            # MISCELLANEOUS - ALWAYS COMPUTED FOR REAL FLUID
+            if "miscellaneous" in self.output_quantities.keys():
+                h5file.create_group(name="miscellaneous")
+                for quantity in self.output_quantities["miscellaneous"]:
+                    computed_quantity = self.compute_miscellaneous(material_fields["primes"], quantity, buffer_dictionary["levelset_quantities"]["volume_fraction"] if self.levelset_type != None else None)
+                    h5file.create_dataset(name="miscellaneous/" + quantity, data=computed_quantity.T, dtype="f8" if self.is_double else "f4")
+
+            # MASS FLOW FORCING
+            if self.is_mass_flow_forcing:
+                h5file.create_group(name="mass_flow_forcing")
+                h5file.create_dataset(name="mass_flow_forcing/scalar_value", data=buffer_dictionary["mass_flow_forcing"]["scalar_value"], dtype="f8" if self.is_double else "f4")
+                h5file.create_dataset(name="mass_flow_forcing/PID_e_int", data=buffer_dictionary["mass_flow_forcing"]["PID_e_int"], dtype="f8" if self.is_double else "f4")
+                h5file.create_dataset(name="mass_flow_forcing/PID_e_new", data=buffer_dictionary["mass_flow_forcing"]["PID_e_new"], dtype="f8" if self.is_double else "f4")
+                   
     def write_xdmffile(self, current_time: float) -> None:
         """Writes an xdmf file for the current time step.
         The xdmf file corresponds to an h5 file which holds the 

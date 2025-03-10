@@ -8,9 +8,10 @@ import os
 from time import sleep
 from typing import List
 from lightning.pytorch.utilities import CombinedLoader
+from numpy.lib.stride_tricks import sliding_window_view
 import re
 
-def create_data_list(data_dirs: List, seq_len: int):
+def create_data_list(data_dirs: List, seq_len: int, stride: int):
         file_list = {}
         it_list_total = []
         case = 0
@@ -20,7 +21,6 @@ def create_data_list(data_dirs: List, seq_len: int):
             it_list= []
             sim = 0
             for root, dirs, files in os.walk(data_path):
-                if 'domain' in root:
                         it_list_sim = []
                         file_list[str(sim + case)] = {}
                         for name in files:
@@ -30,12 +30,14 @@ def create_data_list(data_dirs: List, seq_len: int):
                                 iteration = float(iteration.replace('.h5',''))
                                 file_list[str(sim  + case)].update({'{}'.format(iteration): file_name})
                                 it_list_sim.append(iteration)
-                        sim += 1
-                        it_list_sim.sort()
-                        it_list.append(np.array(it_list_sim))
+                        if any(fname.endswith('.h5') for fname in os.listdir(root)):
+                            sim += 1
+                            it_list_sim.sort()
+                            it_list.append(np.array(it_list_sim))
             case = sim * (i+1)
             it_list = np.stack(it_list)
-            it_list = it_list[...,:seq_len*(it_list.shape[1]//seq_len)].reshape(it_list.shape[0],-1,seq_len)
+            it_list = it_list[...,:seq_len*(it_list.shape[1]//seq_len)] #.reshape(it_list.shape[0],-1,seq_len)
+            it_list = sliding_window_view(it_list, seq_len, axis=-1)[..., ::stride, :]
             it_list_total.append(it_list)
             
         #it_list_total = np.concatenate(it_list_total)
@@ -72,19 +74,23 @@ class hitDataset(Dataset):
             return field, idx, idx_case, time
 
 class hitOfflineDataModule(L.LightningDataModule):
-    def __init__(self, val_dirs: List[str], data_dir: List[str], batch_size: int = 16, seq_len: List[int] = [10, 100]):
+    def __init__(self, val_dirs: List[str], data_dir: List[str], batch_size: int = 16, seq_len: List[int] = [10, 100], stride: List[int] = None):
         super().__init__()
         self.data_dir = data_dir
         self.batch_size = batch_size
         self.seq_len = seq_len
         self.val_dirs = val_dirs
+        if not stride:
+            self.stride = self.seq_len
+        else:
+            self.stride = stride
         self.val_data=[]
         for i in range(len(self.val_dirs)):
-            self.val_data.append(create_data_list(self.val_dirs[i:i+1],self.seq_len[1]))
-        self.train_data= create_data_list(self.data_dir,seq_len[0])
+            self.val_data.append(create_data_list(self.val_dirs[i:i+1],self.seq_len[1], self.stride[1]))
+        self.train_data= create_data_list(self.data_dir,seq_len[0], self.stride[0])
 
     def prepare_data(self):
-        None
+        pass
 
     def setup(self, stage: str):
         # Assign train/val datasets for use in dataloaders
@@ -106,7 +112,7 @@ class hitOfflineDataModule(L.LightningDataModule):
                 self.val_ds.append(hitDataset(self.val_data[i]))
 
     def train_dataloader(self):
-        dl = DataLoader(self.train_ds, batch_size=self.batch_size, num_workers=4, shuffle=True)
+        dl = DataLoader(self.train_ds, batch_size=self.batch_size, num_workers=3, shuffle=True)
         return dl
 
     def val_dataloader(self):

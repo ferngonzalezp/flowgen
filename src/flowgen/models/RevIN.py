@@ -12,17 +12,23 @@ class RevIN(nn.Module):
         self.num_features = num_features
         self.eps = eps
         self.affine = affine
+        self.mean = []
+        self.stdev = []
         if self.affine:
             self._init_params()
 
-    def forward(self, x, mode:str):
+    def forward(self, x, index, mode:str):
         if mode == 'norm':
             self._get_statistics(x)
-            x = self._normalize(x)
+            x = self._normalize(x, index)
         elif mode == 'denorm':
-            x = self._denormalize(x)
+            x = self._denormalize(x, index)
         else: raise NotImplementedError
         return x
+    
+    def reinit_stats(self):
+        self.mean = []
+        self.stdev = []
 
     def _init_params(self):
         # initialize RevIN params: (C,)
@@ -41,22 +47,15 @@ class RevIN(nn.Module):
 
     def _get_statistics(self, x):
         dim2reduce = tuple(range(2, x.ndim))
-        self.mean = torch.mean(x, dim=dim2reduce, keepdim=True).detach()
-        self.stdev = torch.sqrt(torch.var(x, dim=dim2reduce, keepdim=True, unbiased=False) + self.eps).detach()
+        self.mean.append(torch.mean(x, dim=dim2reduce, keepdim=True).detach())
+        self.stdev.append(torch.std(x, dim=dim2reduce, keepdim=True, unbiased=False).detach())
 
-    def _normalize(self, x):
+    def _normalize(self, x, index):
         bs, c, *dim = x.shape
         dim2reduce = tuple(range(2, x.ndim))
         #Standarize
-        x = x - self.mean
-        x = x / self.stdev
-
-        #minmax norm
-        #self.std_min, _ = torch.min(x.reshape(bs,c,-1), dim=-1, keepdim=True)
-        #self.std_min = self.std_min.reshape(bs, c, *[1]*len(dim))
-        #elf.std_max, _ = torch.max(x.reshape(bs,c,-1), dim=-1, keepdim=True)
-        #self.std_max = self.std_max.reshape(bs, c, *[1]*len(dim))
-        #x = 2 * (x - self.std_min) / (self.std_max - self.std_min + 1e-8) - 1
+        x = x - self.mean[index]
+        x = x / (self.stdev[index] + self.eps)
 
         if self.affine:
             gamma = self.affine_weight_in(x.reshape(bs,c,-1)).reshape(bs,c,*dim)
@@ -65,16 +64,15 @@ class RevIN(nn.Module):
             x = x + beta
         return x
 
-    def _denormalize(self, x):
+    def _denormalize(self, x, index):
         bs, c, *dim = x.shape
         if self.affine:
             gamma = self.affine_weight_out(x.reshape(bs,c,-1)).reshape(bs,c,*dim)
             beta =  self.affine_bias_out(x.reshape(bs,c,-1)).reshape(bs,c,*dim)
             x = torch.einsum('bf... , bf... -> bf...', x, gamma)
             x = x + beta
-        #inverse min-max
-        #x = (1 + x) / 2  * (self.std_max - self.std_min) + self.std_min
-        x = x * self.stdev
-        x = x + self.mean
+        
+        x = x * self.stdev[index]
+        x = x + self.mean[index]
         return x
     

@@ -297,6 +297,7 @@ class ConvNextBlockBlock(nn.Module):
         #x = rearrange(x, 'b h w d c -> b c h w d').contiguous()
         out += res
         return out
+
 class LayerNorm(nn.Module):
     r""" LayerNorm that supports two data formats: channels_last (default) or channels_first. 
     The ordering of the dimensions in the inputs. channels_last corresponds to inputs with 
@@ -314,11 +315,13 @@ class LayerNorm(nn.Module):
         self.normalized_shape = (normalized_shape, )
     
     def forward(self, x):
+        B, C, *dim = x.shape
         if self.data_format == "channels_last":
             return F.layer_norm(x, self.normalized_shape, self.weight, self.bias, self.eps)
         elif self.data_format == "channels_first":
             u = x.mean(1, keepdim=True)
             s = (x - u).pow(2).mean(1, keepdim=True)
             x = (x - u) / torch.sqrt(s + self.eps)
-            x = self.weight[:, None, None, None] * x + self.bias[:, None, None, None]
-            return x
+            x = x.reshape(B, C, -1)
+            x = self.weight[None, :, None] * x + self.bias[None, :, None] 
+            return x.reshape(B, C, *dim)

@@ -16,6 +16,30 @@ def movingaverage(interval, window_size):
     window = ones(int(window_size)) / float(window_size)
     return convolve(interval, window)
 
+def find_h5_directory(parent_dir="."):
+    """
+    Find directories containing .h5 files within the parent directory.
+    
+    Args:
+        parent_dir (str): Path to the parent directory (defaults to current directory)
+    
+    Returns:
+        str: Path to the directory containing .h5 files, or None if not found
+    """
+    try:
+        # Walk through directory tree
+        for root, dirs, files in os.walk(parent_dir):
+            # Check if any file ends with .h5
+            if any(f.endswith('.h5') for f in files):
+                return root
+        
+        print("No directory with .h5 files found")
+        return None
+        
+    except Exception as e:
+        print(f"Error while searching for .h5 files: {e}")
+        return None
+
 
 # ------------------------------------------------------------------------------
 def compute_tke_spectrum(u, lx = 6.283185307179586, ly = 6.283185307179586, 
@@ -170,7 +194,7 @@ def mae(x, y, p = 1):
 
 class Postprocess:
     
-    def __init__(self, dataloader, model, savepath, device, val_dir):
+    def __init__(self, dataloader, model, savepath, device, val_dir, dtype='single'):
         
         self.dataloader = dataloader
         self.model = model
@@ -178,7 +202,13 @@ class Postprocess:
         if os.path.exists(self.savepath) != True:
           os.mkdir(self.savepath)
         self.device = device
-        self.val_dir = val_dir
+        self.val_dir = find_h5_directory(val_dir)
+        if not self.val_dir:
+          self.val_dir =  val_dir
+        if dtype == 'half':
+            self.dtype = torch.float16
+        else:
+            self.dtype = torch.float32
         
         self.results = dict()
         for dl_idx in range(len(self.dataloader.iterables)):
@@ -213,7 +243,7 @@ class Postprocess:
                 time = batch[-1].to(self.device)
                 input = y[...,0].to(self.device)
                 for i in range(y.shape[-1]-1):
-                    with torch.autocast(device_type="cuda", dtype=torch.float16):
+                    with torch.autocast(device_type="cuda", dtype=self.dtype):
                       pred = self.model(input, time[...,i], time[...,i+1])
                     y_pred.append(pred)
                     if (i+1) % unroll_steps ==0 :
@@ -271,7 +301,7 @@ class Postprocess:
         data_ref_3 = np.loadtxt("./reference_data/spyropoulos_case3.txt", skiprows=3)
 
         quantities = ["density", "pressure", "temperature", "velocityX", "velocityY", "velocityZ"]
-        cell_centers, cell_sizes, times, data_dict = load_data(self.val_dir + "/HIT/domain", quantities)
+        cell_centers, cell_sizes, times, data_dict = load_data(self.val_dir, quantities)
 
         fig, ax = plt.subplots(figsize=(5,5))
         times = times[1:100]
@@ -281,21 +311,22 @@ class Postprocess:
             else:
                 label=None
                 
-            ax.plot(times/0.85, self.results[idx]['rms']['real'][0], 'c', label=label)
-            ax.plot(times/0.85, self.results[idx]['rms']['pred'][0], '--', markevery=5, linewidth=3, 
+            ax.plot((times-times[0])/0.85, self.results[idx]['rms']['real'][0], 'c', label=label)
+            ax.plot((times-times[0])/0.85, self.results[idx]['rms']['pred'][0], '--', markevery=5, linewidth=3, 
                     label='TFNO_case{}'.format(idx+1))
 
-        ax.plot(data_ref_1[:,0], data_ref_1[:,1], linestyle="None", marker="o", markersize=4, mfc="black", mec="black")
-        ax.plot(data_ref_2[:,0], data_ref_2[:,1], linestyle="None", marker="o", markersize=4, mfc="black", mec="black")
-        ax.plot(data_ref_3[:,0], data_ref_3[:,1], linestyle="None", marker="o", markersize=4, mfc="black", mec="black", label="DNS")
-        ax.set_ylim([0, 0.16])
-        ax.set_yticks([0, 0.05, 0.1, 0.15])
-        ax.text(0.7, 0.15, "Case 1", transform=ax.transAxes, fontsize=12,
-            verticalalignment='top')
-        ax.text(0.7, 0.35, "Case 2", transform=ax.transAxes, fontsize=12,
-                verticalalignment='top')
-        ax.text(0.7, 0.55, "Case 3", transform=ax.transAxes, fontsize=12,
-                verticalalignment='top')
+        if 'HIT_LES_COMP' in self.val_dir:
+          ax.plot(data_ref_1[:,0], data_ref_1[:,1], linestyle="None", marker="o", markersize=4, mfc="black", mec="black")
+          ax.plot(data_ref_2[:,0], data_ref_2[:,1], linestyle="None", marker="o", markersize=4, mfc="black", mec="black")
+          ax.plot(data_ref_3[:,0], data_ref_3[:,1], linestyle="None", marker="o", markersize=4, mfc="black", mec="black", label="DNS")
+          ax.set_ylim([0, 0.16])
+          ax.set_yticks([0, 0.05, 0.1, 0.15])
+          ax.text(0.7, 0.15, "Case 1", transform=ax.transAxes, fontsize=12,
+              verticalalignment='top')
+          ax.text(0.7, 0.35, "Case 2", transform=ax.transAxes, fontsize=12,
+                  verticalalignment='top')
+          ax.text(0.7, 0.55, "Case 3", transform=ax.transAxes, fontsize=12,
+                  verticalalignment='top')
         ax.set_xlabel(r"$t / \tau$")
         ax.set_ylabel(r"$\rho_{rms}$")
         ax.set_xlim([0, 5])
@@ -311,8 +342,8 @@ class Postprocess:
         fig, ax = plt.subplots(figsize=(5,5))
         for idx in range(len(self.dataloader.iterables)):
                 
-            ax.plot(times/0.85, self.results[idx]['k']['real'][0], '-', label='LES_case{}'.format(idx+1))
-            ax.plot(times/0.85, self.results[idx]['k']['pred'][0], '--', markevery=5, linewidth=3, 
+            ax.plot((times-times[0])/0.85, self.results[idx]['k']['real'][0], '-', label='LES_case{}'.format(idx+1))
+            ax.plot((times-times[0])/0.85, self.results[idx]['k']['pred'][0], '--', markevery=5, linewidth=3, 
                     label='TFNO_case{}'.format(idx+1))
 
         #ax.set_ylim([0, 0.16])
@@ -353,9 +384,9 @@ class Postprocess:
             fig = plot_tkespec_1d(knyquist, wave_numbers, E, 'TKE Spectrum case {} '.format(dl_idx+1))
             fig.savefig(self.savepath+'/spectrum_case_{}.png'.format(dl_idx+1))
 
-            fields = ['density', 'temperature', 'pressure', 'u','v','w']
+            fields = ['density', 'pressure', 'temperature', 'u','v','w']
             for i, field in enumerate(fields):
                 plots_case = plot_fields(results['mean']['real'][i],
-                                          results['mean']['pred'][i],field,times)
+                                          results['mean']['pred'][i],field,(times-times[0])/0.85)
                 plots_case.savefig(self.savepath+"/{}_case{}.png".format(field,dl_idx+1))
 

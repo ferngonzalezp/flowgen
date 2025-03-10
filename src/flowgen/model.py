@@ -3,22 +3,26 @@ import lightning as L
 import numpy as np
 import torch.nn.functional as F
 from neuralop.models import TFNO
-from flowgen.utils.loss import nrmse_loss, rH1loss, spec_loss
+from flowgen.utils.loss import nrmse_loss, rH1loss, spec_loss, energy_loss, state_reg
 from flowgen.utils.adaptivePcfLoss import AdaptivePCFLLoss
 from flowgen.models.TFNO_t import TFNO_t
 from flowgen.models.GL_TFNO_t import GL_TFNO_t
 from flowgen.models import Attention_Unet
 from flowgen.models.RevIN import RevIN
+import functools
 
 class tfno(L.LightningModule):
     def __init__(self, loss, lr, modes = 8, precision='full', factorization='tucker', rank=0.42, layers=4, num_classes=3, use_ema=False, affine=False, model='TFNO_t',
-     weight_decay=1e-3, lr_warmup = False, lr_warmup_steps = 1000):
+     weight_decay=1e-3, lr_warmup = False, lr_warmup_steps = 1000, annealing_steps=None):
         super().__init__()
         self.affine = affine
         self.rev_in = RevIN(6, affine=self.affine)
         self.model_type = model
         self.lr_warmup = lr_warmup
         self.lr_warmup_steps = lr_warmup_steps
+        self.annealing_steps =  annealing_steps
+        self.loss_fn = {'nrmse': nrmse_loss, 'H1': rH1loss, 'spec': spec_loss, 'energy': energy_loss, 'thermo': functools.partial(state_reg, w=10)}
+        self.loss_terms = ['spec', 'H1', 'spec', 'energy', 'thermo']
         if model=='TFNO':
             self.model = TFNO(n_modes=(modes,modes,modes),
                             hidden_channels=64,
@@ -62,12 +66,12 @@ class tfno(L.LightningModule):
 
     def forward(self, inputs, t0, t):
 
-        x = self.rev_in(inputs, 'norm')
+        x = self.rev_in(inputs, 0, 'norm')
         if not self.model=='TFNO':
             x = self.model(x, t0, t)
         else:
             x = self.model(x)
-        x = self.rev_in(x, 'denorm')
+        x = self.rev_in(x, 0, 'denorm')
         return x
     
     def predict(self, inputs, t0, t):
@@ -85,7 +89,7 @@ class tfno(L.LightningModule):
         x = self.rev_in(x, 'denorm')
         return x
     
-    def pushforward_loss(self, y, warmup_steps, time, w=None, reduction=True):
+    def pushforward_loss(self, y, warmup_steps, time, w=1.0, reduction=True):
         pred = []
         for time_step in range(y.shape[-1] - warmup_steps - 1):
             if self.model_type == 'GL_TFNO':
@@ -98,9 +102,11 @@ class tfno(L.LightningModule):
                         self.model.detach_memeory()
             pred.append(self(input,time[...,time_step+warmup_steps], time[...,time_step+warmup_steps+1]))
         pred = torch.stack(pred,dim=-1)
-        nrmse = spec_loss(pred, y[...,warmup_steps+1:], w=w, reduction=reduction)
-        h1_loss= rH1loss(pred,y[...,warmup_steps+1:], w=w, reduction=reduction)
-        loss = torch.clamp(h1_loss + nrmse, min=1e-8, max=10)
+        loss = 0.0
+        for l in self.loss_terms:
+            loss += self.loss_fn[l](pred, y[...,warmup_steps+1:])
+       
+        loss = w * torch.clamp(loss, min=1e-8, max=10)
 
         #print(f"y_true range: {pred.min().item()} to {pred.max().item()}")
         #assert not torch.isnan(pred).any(), "NaN in pred of pushforward"
@@ -155,17 +161,22 @@ class tfno(L.LightningModule):
                         self.model.detach_memory()
             y_pred = torch.stack(y_pred, dim=-1)
             if self.loss == 'one_step':
-                nrmse = nrmse_loss(y_pred, y[...,1:])
-                h1_loss= rH1loss(y_pred,y[...,1:])
-                loss = h1_loss + nrmse
+                loss = 0.0
+                for l in self.loss_terms:
+                    loss += self.loss_fn[l](y_pred, y[...,1:])
+                nrmse = nrmse_loss(y_pred, y[...,1:]).detach()
+                h1_loss= rH1loss(y_pred,y[...,1:]).detach()
                 values = {'nrmse': nrmse, 'H1_loss': h1_loss}
             elif self.loss == 'pushforward':
-                nrmse = spec_loss(y_pred, y[...,1:])
-                h1_loss= rH1loss(y_pred,y[...,1:])
+                nrmse = spec_loss(y_pred, y[...,1:]).detach()
+                h1_loss= rH1loss(y_pred,y[...,1:]).detach()
+                loss = 0.0
+                for l in self.loss_terms:
+                    loss += self.loss_fn[l](y_pred, y[...,1:])
                 warmup_steps = (batch_idx + 1) % self.pf_steps + 1
                 pf_loss = self.pushforward_loss(y, warmup_steps, time)
                 self.pf_loss_train.append(pf_loss)
-                loss = h1_loss + nrmse + pf_loss
+                loss += pf_loss
                 values = {'nrmse': nrmse, 'H1_loss': h1_loss, 'PF_loss': pf_loss}
             elif self.loss == 'causality':
                 loss = self.causality_loss(y, time)
@@ -238,14 +249,16 @@ class tfno(L.LightningModule):
                           
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+        if not self.annealing_steps:
+            self.annealing_steps = self.trainer.max_epochs
         if self.lr_warmup:
             scheduler1 =  torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1e-4, total_iters=self.lr_warmup_steps)
             steps = max(self.trainer.max_epochs, self.trainer.max_steps)
             if self.trainer.max_epochs > self.trainer.max_steps:
                 steps = self.trainer.estimated_stepping_batches
-            scheduler2 = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 100 * self.trainer.num_training_batches, eta_min=1e-6)
-            scheduler3 = torch.optim.lr_scheduler.ConstantLR(optimizer, factor=1e-6 / self.lr, total_iters=steps)
-            scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer, [scheduler1, scheduler2, scheduler3], milestones=[sef.lr_warmup_steps, 100 * self.trainer.num_training_batches])
+            scheduler2 = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, self.annealing_steps * self.trainer.num_training_batches, eta_min=1e-6)
+            #scheduler3 = torch.optim.lr_scheduler.ConstantLR(optimizer, factor=1e-6 / self.lr, total_iters=steps)
+            scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer, [scheduler1, scheduler2], milestones=[self.lr_warmup_steps])
         else:
             steps = max(self.trainer.max_epochs, self.trainer.max_steps)
             if self.trainer.max_epochs > self.trainer.max_steps:
