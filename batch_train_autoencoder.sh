@@ -31,10 +31,10 @@ export OMPI_MCA_orte_base_help_aggregate=0
 export BATCH_SIZE=4
 
  mpirun -np $(($SLURM_NTASKS)) python train_autoencoder.py --save_path experiments --devices $SLURM_NTASKS_PER_NODE --nodes $SLURM_NNODES \
- --batch_size $BATCH_SIZE --lr 1e-4 --epochs 1500 \
+ --batch_size $BATCH_SIZE --lr 1e-4 --epochs 2000 \
  --data_path /scratch/cfd/gonzalez/HIT_LES_COMP/ --cases case1 case2 case3 --seq_len 5 5 --vae_params vae_config_8.yaml \
  --overfit_batches 0 --beta 0 --accumulate_grad_batches $((256 / ($SLURM_NTASKS * $BATCH_SIZE))) \
- --ckpt_path /scratch/cfd/gonzalez/flowgen/experiments/VAE-258/lightning_logs/version_1537905/checkpoints/epoch=1079-step=108852.ckpt
+ --ckpt_path /scratch/cfd/gonzalez/flowgen/experiments/VAE-267/lightning_logs/version_1542538/checkpoints/epoch=1238-step=162594.ckpt
  #--fine_tune_recon --pre_trained_pth /scratch/cfd/gonzalez/flowgen/experiments/VAE-40/lightning_logs/version_1511174/checkpoints/epoch=74-step=42225.ckpt \
 #########################
 

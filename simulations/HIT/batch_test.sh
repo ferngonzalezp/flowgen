@@ -30,6 +30,6 @@ source /scratch/cfd/gonzalez/pyenvs/flowgen_rk8/bin/activate
 #########################
 
 # EXECUTION ########
-mpirun -np 1 python run_forced_hit.py
+mpirun -np 1 python run_forced_hit.py --case_json /scratch/cfd/gonzalez/flowgen/simulations/HIT/HIT_decay_ma0.2.json
 #########################
 

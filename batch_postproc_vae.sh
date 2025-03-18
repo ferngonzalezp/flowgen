@@ -28,5 +28,5 @@ source ../pyenvs/flowgen_rk8/bin/activate
 # EXECUTION ########
  mpirun -np $(($SLURM_NTASKS)) python evaluate_autoencoder.py --seq_len 5 100 --save_path experiments/postproc_vae \
         --data_path /scratch/cfd/gonzalez/HIT_LES_COMP/ --vae_params vae_config_8.yaml\
-        --ckpt_path /scratch/cfd/gonzalez/flowgen/experiments/VAE-258/lightning_logs/version_1537905/checkpoints/epoch=1069-step=105472.ckpt
+        --ckpt_path /scratch/cfd/gonzalez/flowgen/experiments/VAE-267/lightning_logs/version_1542538/checkpoints/epoch=1236-step=161918.ckpt
 #########################

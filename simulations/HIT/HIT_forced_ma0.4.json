@@ -1,8 +1,8 @@
 {
     "general": {
         "case_name": "HIT",
-        "end_time": 3000.0,
-        "save_path": "/scratch/cfd/gonzalez/HIT_LES_FORCED",
+        "end_time": 1550.0,
+        "save_path": "/scratch/cfd/gonzalez/HIT_LES_FORCED/case2_forced",
         "save_dt": 0.05
     },
     "domain": {
@@ -41,9 +41,9 @@
     "initial_condition": {
         "turb_init_params": {
             "turb_case": "RISTORCELLI",
-            "energy_spectrum"   : "ISOTROPIC_FORCED",
+            "energy_spectrum" : "EXPONENTIAL",
             "xi_0": 4,
-            "ma_target": 0.3,
+            "ma_target": 0.4,
             "T_ref": 1.0,
             "rho_ref": 1.0,
             "ic_type": "IC1",
@@ -55,8 +55,8 @@
     },
     "material_properties": {
         "type": "IdealGas",
-        "dynamic_viscosity": "lambda T: 0.0028 * T**0.76",
-        "bulk_viscosity": 0.001,
+        "dynamic_viscosity": "lambda T: 0.004 * T**0.76",
+        "bulk_viscosity": 0.0,
         "thermal_conductivity": "Prandtl",
         "prandtl_number": 0.72,
         "specific_heat_ratio": 1.4,
@@ -70,6 +70,6 @@
     },
     "restart": {
         "flag": true,
-        "file_path": "/scratch/cfd/gonzalez/HIT_LES_FORCED/HIT-4/domain/data_2666.613111.h5"
+        "file_path": "/scratch/cfd/gonzalez/HIT_LES_FORCED/case2_forced/rst.h5"
     }
 }
