@@ -32,8 +32,8 @@ include = ["flowgen*"]  # adjust this to match your package name
 [tool.setuptools]
 package-dir = {"" = "src"}
 
-[tool.setuptools.dynamic]
-dependencies = {file = ["requirements.txt"]}
+#[tool.setuptools.dynamic]
+#dependencies = {file = ["requirements.txt"]}
 
 [project.optional-dependencies]
 dev = ["pytest"]

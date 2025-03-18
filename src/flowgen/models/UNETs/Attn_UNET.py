@@ -5,7 +5,8 @@ from flowgen.models.UNETs.block import ConvNextBlockBlock, LayerNorm
 from flowgen.models.timeEmbedding import time_embedding
 from torch.nn.utils.parametrizations import spectral_norm
 import xformers.ops as xops
-from xformers.components.positional_embedding.rotary import RotaryEmbedding
+#from xformers.components.positional_embedding.rotary import RotaryEmbedding
+from flowgen.models.VAE.embedding import RotaryPositionEmbeddingPytorchV1 as RotaryEmbedding
 from einops import rearrange
 from functools import partial
 
@@ -80,7 +81,7 @@ class MHCA(nn.Module):
         self.q_embed = hMLP_stem(in_chans=skip_feats, embed_dim=embed_dim)
         self.v_embed = hMLP_stem(in_chans=x_feats, embed_dim=embed_dim)
         self.out_proj = hMLP_output(out_chans=skip_feats, embed_dim=embed_dim)
-        self.rope = RotaryEmbedding(embed_dim)
+        self.rope = RotaryEmbedding(dim = embed_dim//num_heads)
         self.num_heads = num_heads
         self.norm_skip = LayerNorm(skip_feats, eps=1e-6, data_format='channels_first')
         self.norm_x = LayerNorm(x_feats, eps=1e-6, data_format='channels_first')
@@ -99,12 +100,15 @@ class MHCA(nn.Module):
         k = rearrange(k, 'b c h w d -> b (h w d) c').contiguous()
         v = rearrange(v, 'b c h w d -> b (h w d) c').contiguous()
 
+        D = q.shape[-1]
+        q = rearrange(q, 'b s (h d) -> b s h d', h=self.num_heads, d=D//self.num_heads)
+        k = rearrange(k, 'b s (h d) -> b s h d', h=self.num_heads, d=D//self.num_heads)
         _, k = self.rope(k, k)
         _, q = self.rope(q, q)
-        _, bs, l, c = q.shape
+        bs, l, h, c = q.shape
 
-        q, k, v = (rearrange(q.squeeze(0), 'b (h w d) (nh c) -> b nh (h w d) c', nh=self.num_heads, h=dim_q[0], w=dim_q[1], d=dim_q[2]).contiguous(), 
-                  rearrange(k.squeeze(0), 'b (h w d) (nh c) -> b nh (h w d) c', nh=self.num_heads, h=dim_kv[0], w=dim_kv[1], d=dim_kv[2]).contiguous(),  
+        q, k, v = (rearrange(q, 'b (h w d) nh c -> b nh (h w d) c', nh=self.num_heads, h=dim_q[0], w=dim_q[1], d=dim_q[2]).contiguous(), 
+                  rearrange(k, 'b (h w d) nh c -> b nh (h w d) c', nh=self.num_heads, h=dim_kv[0], w=dim_kv[1], d=dim_kv[2]).contiguous(),  
                   rearrange(v, 'b (h w d) (nh c) -> b nh (h w d) c', nh=self.num_heads, h=dim_kv[0], w=dim_kv[1], d=dim_kv[2]).contiguous())
 
         #proj = xops.memory_efficient_attention(q, k, v)
@@ -147,7 +151,7 @@ class MHSA(nn.Module):
             nn.GELU(),
             nn.Linear(embed_dim//4, x_feats),
         )
-        self.rope = RotaryEmbedding(embed_dim)
+        self.rope = RotaryEmbedding(dim=embed_dim//num_heads)
         self.num_heads = num_heads
 
         self.norm_x = LayerNorm(x_feats, eps=1e-6, data_format='channels_last')
@@ -161,13 +165,18 @@ class MHSA(nn.Module):
         x =  self.norm_x(x)
         q, k = self.q_embed(x), self.k_embed(x)
         v = self.v_embed(x)
-        q, k = self.rope(q, k)
-        _, bs, l, c = q.shape
 
-        q, k, v = (rearrange(q.squeeze(0), 'b l (nh c) -> b nh l c', nh=self.num_heads).contiguous(), 
-                  rearrange(k.squeeze(0), 'b l (nh c) -> b nh l c', nh=self.num_heads).contiguous(),  
+        D = q.shape[-1]
+        q = rearrange(q, 'b s (h d) -> b s h d', h=self.num_heads, d=D//self.num_heads)
+        k = rearrange(k, 'b s (h d) -> b s h d', h=self.num_heads, d=D//self.num_heads)
+
+        q, k = self.rope(q, k)
+        bs, l, h, c = q.shape
+
+        q, k, v = (rearrange(q, 'b l nh c -> b nh l c', nh=self.num_heads).contiguous(), 
+                  rearrange(k, 'b l nh c -> b nh l c', nh=self.num_heads).contiguous(),  
                   rearrange(v, 'b l (nh c) -> b nh l c', nh=self.num_heads).contiguous())
-        #proj = xops.memory_efficient_attention(q, k, v)
+
         proj = compiled_self_attn(q, k, v)
         proj = rearrange(proj, 'b nh (h w d) c -> b (h w d) (nh c)', nh=self.num_heads, h=dim[0], w=dim[1], d=dim[2]).contiguous()
         proj =  self.norm_out(proj)

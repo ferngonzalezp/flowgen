@@ -2,7 +2,7 @@ import lightning as L
 from flowgen import hitOfflineDataModule
 from flowgen.models.VAE import SpatioTemporalVAETrainer as VAE
 from flowgen.utils.scaler import FeatureScaler
-from lightning.pytorch.plugins.environments import MPIEnvironment
+from lightning.pytorch.plugins.environments import MPIEnvironmen, SLURMEnvironment
 from lightning.pytorch.strategies import FSDPStrategy, DDPStrategy
 from argparse import ArgumentParser
 import torch
@@ -86,7 +86,8 @@ def main(args):
 
     trainer = L.Trainer(max_epochs=args.epochs, devices=args.devices, num_nodes=args.nodes, 
                         accelerator='gpu',
-                        plugins=MPIEnvironment(),
+                        #plugins=MPIEnvironment(),
+                        plugins=SLURMEnvironment(),
                         callbacks=[checkpoint_callback, checkpoint_rst, val_avg_metric()],
                         strategy=DDPStrategy(find_unused_parameters=True),
                         precision=args.precision,
