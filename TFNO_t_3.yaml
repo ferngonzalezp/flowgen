@@ -1,0 +1,9 @@
+#TFNO_t parameters
+modes: 8
+precision: 'full'
+factorization: 'tucker'
+rank: 0.42
+layers: 6
+hidden_dim: 64
+in_channels: 6
+out_channels: 6
