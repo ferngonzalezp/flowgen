@@ -16,7 +16,7 @@
             <parameter key="RendezvousReaderCount" value="1"/>
             <parameter key="QueueLimit" value="2"/>
             <parameter key="QueueFullPolicy" value="Block"/>
-            <parameter key="DataTransport" value="WAN"/>
+            <parameter key="DataTransport" value="RDMA"/>
             <parameter key="NetworkInterface" value="ib0"/>
             <parameter key="QueueFullPolicy" value="Block"/>
             <parameter key="StepDistributionMode" value="RoundRobin"/>
@@ -37,10 +37,10 @@
     <io name="readerIO">
         <engine type="SST">
             <!-- BP4/SST engine parameters -->
-            <parameter key="OpenTimeoutSecs" value="100.0"/>
+            <parameter key="OpenTimeoutSecs" value="200.0"/>
             <parameter key="SubStreams" value="128"/>
             <parameter key="SubStreams" value="128"/>
-            <parameter key="DataTransport" value="WAN"/>
+            <parameter key="DataTransport" value="RDMA"/>
             <parameter key="NetworkInterface" value="ib0"/>
         </engine>
     </io>

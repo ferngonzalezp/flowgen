@@ -181,7 +181,8 @@ class SimulationManager:
             levelset_handler                    = self.levelset_handler if self.input_reader.levelset_type != None else None,
             derivative_stencil_conservatives    = DICT_FIRST_DERIVATIVE_CENTER[self.numerical_setup["output"]["derivative_stencil"]](nh=self.domain_information.nh_conservatives, inactive_axis=self.domain_information.inactive_axis),
             derivative_stencil_geometry         = DICT_FIRST_DERIVATIVE_CENTER[self.numerical_setup["output"]["derivative_stencil"]](nh=self.domain_information.nh_geometry, inactive_axis=self.domain_information.inactive_axis) if self.input_reader.levelset_type != None else None,
-            stream                              = self.numerical_setup["output"]["stream"]
+            stream                              = self.numerical_setup["output"]["stream"],
+            time_steps_to_send                  = self.numerical_setup["output"]["time_steps_to_send"],
             )
 
         self.logger = Logger("", logging_level=self.numerical_setup["output"]["logging"]) 

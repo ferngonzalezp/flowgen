@@ -12,17 +12,18 @@ from flowgen.models.RevIN import RevIN
 import functools
 
 class tfno(L.LightningModule):
-    def __init__(self, loss, lr, modes = 8, precision='full', factorization='tucker', rank=0.42, layers=4, num_classes=3, use_ema=False, affine=False, model='TFNO_t',
+    def __init__(self, loss, lr, model_config, num_classes=3, use_ema=False, affine=False, model='TFNO_t',
      weight_decay=1e-3, lr_warmup = False, lr_warmup_steps = 1000, annealing_steps=None):
         super().__init__()
         self.affine = affine
+        self.config = model_config
         self.rev_in = RevIN(6, affine=self.affine)
         self.model_type = model
         self.lr_warmup = lr_warmup
         self.lr_warmup_steps = lr_warmup_steps
         self.annealing_steps =  annealing_steps
         self.loss_fn = {'nrmse': nrmse_loss, 'H1': rH1loss, 'spec': spec_loss, 'energy': energy_loss, 'thermo': functools.partial(state_reg, w=10)}
-        self.loss_terms = ['spec', 'H1', 'spec', 'energy', 'thermo']
+        self.loss_terms = ['nrmse', 'spec']
         if model=='TFNO':
             self.model = TFNO(n_modes=(modes,modes,modes),
                             hidden_channels=64,
@@ -38,8 +39,16 @@ class tfno(L.LightningModule):
         
         if model=='TFNO_t':
         
-            self.model = TFNO_t(modes = (modes,modes,modes), precision=precision, factorization=factorization, 
-                    rank=rank, layers=layers, hidden_dim=64, in_channels=6, out_channels=6)
+            self.model = TFNO_t(modes = (self.config['modes'],
+            self.config['modes'],
+            self.config['modes']),
+            precision=self.config['precision'], 
+            factorization=self.config['factorization'], 
+            rank=self.config['rank'], 
+            layers=self.config['layers'], 
+            hidden_dim=self.config['hidden_dim'], 
+            in_channels=self.config['in_channels'], 
+            out_channels=self.config['out_channels'])
         
         if model=='GL_TFNO':
 
@@ -59,7 +68,7 @@ class tfno(L.LightningModule):
         self.val_loss_avg = [0] * num_classes
         self.dynamic_loss = AdaptivePCFLLoss(num_classes=num_classes, gamma=2.0, stability_factor=0.5)
         self.automatic_optimization=True
-        self.modes = modes
+        #self.modes = modes
         self.pf_loss_train = []
         self.pf_steps = 8
         self.ema = use_ema
@@ -72,10 +81,11 @@ class tfno(L.LightningModule):
         else:
             x = self.model(x)
         x = self.rev_in(x, 0, 'denorm')
+        self.rev_in.reinit_stats()
         return x
     
     def predict(self, inputs, t0, t):
-        x = self.rev_in(inputs, 'norm')
+        x = self.rev_in(inputs, 0, 'norm')
         if self.ema:
             if not self.model=='TFNO':
                 x = self.ema_model(x, t0, t)
@@ -86,7 +96,8 @@ class tfno(L.LightningModule):
                 x = self.model(x, t0, t)
             else:
                 x = self.model(x)
-        x = self.rev_in(x, 'denorm')
+        x = self.rev_in(x, 0, 'denorm')
+        self.rev_in.reinit_stats()
         return x
     
     def pushforward_loss(self, y, warmup_steps, time, w=1.0, reduction=True):
@@ -164,9 +175,10 @@ class tfno(L.LightningModule):
                 loss = 0.0
                 for l in self.loss_terms:
                     loss += self.loss_fn[l](y_pred, y[...,1:])
-                nrmse = nrmse_loss(y_pred, y[...,1:]).detach()
-                h1_loss= rH1loss(y_pred,y[...,1:]).detach()
-                values = {'nrmse': nrmse, 'H1_loss': h1_loss}
+                with torch.no_grad():
+                    nrmse = nrmse_loss(y_pred, y[...,1:]).detach()
+                    specLoss = spec_loss(y_pred,y[...,1:]).detach()
+                values = {'train_loss': loss.item(),'nrmse': nrmse, 'spec_loss': specLoss}
             elif self.loss == 'pushforward':
                 nrmse = spec_loss(y_pred, y[...,1:]).detach()
                 h1_loss= rH1loss(y_pred,y[...,1:]).detach()
@@ -241,7 +253,7 @@ class tfno(L.LightningModule):
             y_pred.append(pred)
             input = pred
         y_pred = torch.stack(y_pred, dim=-1)
-        nrmse = nrmse_loss(y_pred, y[...,1:])
+        nrmse = nrmse_loss(y_pred, y[...,1:], reduction=False).mean()
         self.val_loss_avg[dataloader_idx] += nrmse
         #self.log('val_loss_avg', nrmse, prog_bar=False, sync_dist=True)
         self.log_dict({'val_loss_case{}'.format(dataloader_idx): nrmse,}, prog_bar=True, sync_dist=True)

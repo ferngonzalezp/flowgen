@@ -40,6 +40,7 @@
             "primes": ["density", "velocityX", "velocityY", "velocityZ", "pressure", "temperature"]
         },
         "stream": true,
-        "write_on_disk": false
+        "write_on_disk": false,
+        "time_steps_to_send": 2
     }
 }

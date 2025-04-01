@@ -5,19 +5,28 @@ import json
 from argparse import ArgumentParser
 import os
 import shutil
+from mpi4py import MPI
+import jax
 
-def get_latest_directory(parent_dir):
-    """Find the latest created directory in the parent directory."""
+# Initialize JAX distributed execution
+jax.distributed.initialize()
+
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
+size = comm.Get_size()
+
+def get_latest_directory(parent_dir, prefix):
+    """Find the latest created directory in the parent directory that starts with a given prefix."""
     try:
-        # Get all subdirectories
+        # Get all subdirectories that start with the given prefix
         subdirs = [os.path.join(parent_dir, d) for d in os.listdir(parent_dir) 
-                  if os.path.isdir(os.path.join(parent_dir, d))]
+                   if os.path.isdir(os.path.join(parent_dir, d)) and d.startswith(prefix)]
         if not subdirs:
             return None
         # Return the latest directory based on creation time
         return max(subdirs, key=os.path.getctime)
     except Exception as e:
-        print(f"Error finding latest directory: {e}")
+        print(f"Error finding latest directory with prefix '{prefix}': {e}")
         return None
 
 def clean_directory(parent_dir=".", dirname='HIT_'):
@@ -59,26 +68,42 @@ def clean_directory(parent_dir=".", dirname='HIT_'):
     except:
         pass
 
+def get_available_gpus():
+    """Detect available GPUs on the node."""
+    num_gpus = len(os.environ.get("CUDA_VISIBLE_DEVICES", "").split(","))
+    return num_gpus if num_gpus > 0 else 1  # Assume at least 1 GPU if not set
+
 def main(args):
-    if args.realizations == -1:
-        realizations = np.inf
-    else:
-        realizations = args.realizations
+    print(f"Rank {rank}: Starting execution")
+    devices = jax.devices()  # Get available GPUs
+    num_devices = jax.device_count()
+    
+    # Each rank gets a GPU assigned
+    gpu_id = rank % num_devices  
 
-    n =  1
-    seed = args.initial_seed
+    device = jax.local_devices()  # Assign GPU
+
+    # Assign a unique seed for each process
+    seed = [args.initial_seed + size] * size
+    realizations = np.inf if args.realizations == -1 else args.realizations
+
+    # Each process picks a simulation case
+    sim_cases = ["HIT_decay_ma0.2.json", "HIT_decay_ma0.4.json", "HIT_decay_ma0.6.json"]
+    sim_case = sim_cases[rank % len(sim_cases)]  # Assign case based on rank
+
+    n =  [1] * size
     if args.resume:
-        latest_dir = get_latest_directory("./train_online")
+        latest_dir = get_latest_directory("args.sim_directory", f"sim_{rank}")
 
-        sim_params = os.path.join(latest_dir, 'HIT.json')
+        sim_params = os.path.join(latest_dir, f'sim_{rank}.json')
         numerical_setup = os.path.join(latest_dir, 'numerical_setup.json')
         
 
         with open(sim_params, 'r') as json_file:
                 resume_sim = json.load(json_file)
         
-        seed = resume_sim['initial_condition']['turb_init_params']['seed']
-        n = seed
+        seed[rank] = resume_sim['initial_condition']['turb_init_params']['seed']
+        n[rank] = seed[rank] // rank
 
         try:
             for root, dirs, files in os.walk(latest_dir):
@@ -101,45 +126,50 @@ def main(args):
         # RUN SIMULATION
         buffer_dictionary = initializer.initialization()
         sim_manager.simulate(buffer_dictionary)
-        n += 1
-        clean_directory(parent_dir='./train_online', dirname='HIT')
+        comm.Barrier()
+
+        n[rank] += 1
+        clean_directory(parent_dir=args.sim_directory, dirname=f'sim_{rank}')
 
     
-    while n <= realizations:
-
-        for i, sim in enumerate(["HIT_decay_ma0.2.json",
-                            "HIT_decay_ma0.4.json", 
-                            "HIT_decay_ma0.6.json",
-                            ]):
+    while n[rank] <= realizations:
+            #comm.Barrier()
             # SETUP SIMULATION
-            #seed += i  
-            with open(sim, 'r') as json_file:
+            # Modify simulation parameters
+            sim_case = sim_cases[n[rank] % len(sim_cases)]
+            with open(sim_case, 'r') as json_file:
                 modified_sim = json.load(json_file)
             with open("numerical_setup_stream.json", 'r') as json_file:
                 numerical_setup = json.load(json_file)
             
-            modified_sim['initial_condition']['turb_init_params']['seed']=seed
+            modified_sim['initial_condition']['turb_init_params']['seed'] = seed[rank]
+            modified_sim['general']['case_name']= f"sim_{rank}"
+            modified_sim['general']['save_path'] = args.sim_directory
 
-            with open(sim, 'w') as json_file:
-                json.dump(modified_sim,json_file, indent=4)
+            # Save modified parameters
+            with open(f"sim_{rank}.json", 'w') as json_file:
+                json.dump(modified_sim, json_file, indent=4)
 
-            input_reader = InputReader(sim, "numerical_setup_stream.json")
-            initializer  = Initializer(input_reader)
+            # Run simulation
+            print(f"Rank {rank}: Running simulation {n[rank]} with seed {seed[rank]}")
+            input_reader = InputReader(f"sim_{rank}.json", "numerical_setup_stream.json")
+            initializer = Initializer(input_reader)
+            sim_manager = SimulationManager(input_reader)
 
-            sim_manager  = SimulationManager(input_reader)
-
-            # RUN SIMULATION
             buffer_dictionary = initializer.initialization()
             sim_manager.simulate(buffer_dictionary)
-            clean_directory(parent_dir='./train_online', dirname='HIT')
-        
-        n += 1
-        seed += 1 
+
+            n[rank] += 1
+            seed[rank] += size  # Ensure unique seed across ranks
+            print(f"Rank {rank}: Cleaning up directory: sim_{rank}")
+            clean_directory(parent_dir=args.sim_directory, dirname=f"sim_{rank}")
+            #comm.Barrier()
         
 if __name__ == "__main__":
      parser = ArgumentParser()
      parser.add_argument("--realizations", type=int, default=-1)
      parser.add_argument("--initial_seed", type=int, default=10)
+     parser.add_argument("--sim_directory", type=str, default='./train_online')
      parser.add_argument("--resume", action='store_true')
      args = parser.parse_args()
      main(args)

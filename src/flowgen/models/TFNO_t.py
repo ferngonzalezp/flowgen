@@ -37,8 +37,7 @@ class FNO_block(nn.Module):
                                      rank=rank,
                                      n_modes=modes,
                                      factorization=factorization,
-                                     implementation='factorized',
-                                     n_layers=1)
+                                     implementation='factorized')
         
         self.mlp = nn.Sequential(nn.Conv1d(out_channels, out_channels//2, 1, bias=True),
                                            nn.GELU(),
@@ -53,7 +52,7 @@ class FNO_block(nn.Module):
         bs, c, *dims = x.shape
         skip1 = x
         skip2 = nn.functional.gelu(x)
-        x = self.spec_conv(x, 0, output_shape=None)
+        x = self.spec_conv(x)
         x = nn.functional.gelu(self.norm1(x) + skip1)
         x = self.norm2(self.mlp(x.reshape(bs,c,-1)).reshape((bs,c,*dims)), t)
         x = x + skip2

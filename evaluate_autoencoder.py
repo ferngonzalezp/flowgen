@@ -5,7 +5,7 @@ import lightning as L
 from flowgen import hitOfflineDataModule
 from flowgen.models.VAE import SpatioTemporalVAETrainer as VAE
 from flowgen.utils.scaler import FeatureScaler
-from lightning.pytorch.plugins.environments import MPIEnvironment
+from lightning.pytorch.plugins.environments import MPIEnvironment, SLURMEnvironment
 import os
 import yaml
 from flowgen.utils.loss import nrmse_loss
@@ -61,7 +61,7 @@ def plot_fields(field, pred, varname):
 
     return fig
 
-def evaluate_latent_space(model, data_loader, latent_dim, save_path, scaler, val_dir):
+def evaluate_latent_space(model, data_loader, latent_dim, save_path, scaler, val_dir, data_path):
     """
     Evaluate the latent space of a trained model.
     
@@ -188,9 +188,9 @@ def evaluate_latent_space(model, data_loader, latent_dim, save_path, scaler, val
     visualize_latent_space(all_mu, latent_dim, save_path, k, Ma)
     visualize_reconstructed(original_data, reconstructed_data, save_path)
 
-    data_ref_1 = np.loadtxt("/scratch/cfd/gonzalez/HIT_LES_COMP/reference_data/spyropoulos_case1.txt", skiprows=3)
-    data_ref_2 = np.loadtxt("/scratch/cfd/gonzalez/HIT_LES_COMP/reference_data/spyropoulos_case2.txt", skiprows=3)
-    data_ref_3 = np.loadtxt("/scratch/cfd/gonzalez/HIT_LES_COMP/reference_data/spyropoulos_case3.txt", skiprows=3)
+    data_ref_1 = np.loadtxt(data_path+"reference_data/spyropoulos_case1.txt", skiprows=3)
+    data_ref_2 = np.loadtxt(data_path+"reference_data/spyropoulos_case2.txt", skiprows=3)
+    data_ref_3 = np.loadtxt(data_path+"reference_data/spyropoulos_case3.txt", skiprows=3)
     quantities = ["density", "pressure", "temperature", "velocityX", "velocityY", "velocityZ"]
 
     fig, ax = plt.subplots(figsize=(5,5))
@@ -347,7 +347,7 @@ def main(args):
 
     dm.setup(stage='fit')
 
-    metrics = evaluate_latent_space(model, dm.val_dataloader(), vae_params['latent_dim'], save_path, scaler, val_dir[0])
+    metrics = evaluate_latent_space(model, dm.val_dataloader(), vae_params['latent_dim'], save_path, scaler, val_dir[0], data_path)
     
     # Save metrics to CSV
     # Convert metrics dictionary to DataFrame

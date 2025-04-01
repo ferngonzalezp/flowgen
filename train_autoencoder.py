@@ -2,7 +2,7 @@ import lightning as L
 from flowgen import hitOfflineDataModule
 from flowgen.models.VAE import SpatioTemporalVAETrainer as VAE
 from flowgen.utils.scaler import FeatureScaler
-from lightning.pytorch.plugins.environments import MPIEnvironmen, SLURMEnvironment
+from lightning.pytorch.plugins.environments import MPIEnvironment, SLURMEnvironment
 from lightning.pytorch.strategies import FSDPStrategy, DDPStrategy
 from argparse import ArgumentParser
 import torch
@@ -12,6 +12,7 @@ from flowgen.models.RevIN import RevIN
 from mpi4py import MPI
 import os
 import yaml
+from aim.pytorch_lightning import AimLogger
 
 checkpoint_callback = ModelCheckpoint(save_top_k=1, monitor="val_loss_avg", mode='min', auto_insert_metric_name=True)
 checkpoint_rst = ModelCheckpoint()
@@ -32,7 +33,8 @@ def main(args):
 
     with open(args.vae_params, 'r') as file:
         vae_params = yaml.safe_load(file)
-
+    
+    logger = AimLogger()
     vae_params.update(dict(beta=args.beta))
     vae_params.update(dict(seq_len=args.seq_len[0]))
     if vae_params['scaler_type'] == 'iterative':
@@ -96,6 +98,7 @@ def main(args):
                         accumulate_grad_batches=args.accumulate_grad_batches,
                         default_root_dir=save_path,
                         overfit_batches=args.overfit_batches,
+                        logger=logger,
                         #limit_train_batches=args.overfit_batches,
                         )
 

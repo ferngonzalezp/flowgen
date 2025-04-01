@@ -38,8 +38,8 @@ import h5py
 import jax
 import jax.numpy as jnp
 import numpy as np
-#import adios2.bindings as adios2
-#import adios2
+import adios2.bindings as adios2
+from mpi4py import MPI
 
 from jaxfluids.domain_information import DomainInformation
 from jaxfluids.levelset.levelset_handler import LevelsetHandler
@@ -47,6 +47,8 @@ from jaxfluids.materials.material_manager import MaterialManager
 from jaxfluids.unit_handler import UnitHandler
 from jaxfluids.input_reader import InputReader
 from jaxfluids.stencils.spatial_derivative import SpatialDerivative
+
+comm = MPI.COMM_SELF
 
 class OutputWriter:
     """Output writer for JAX-FLUIDS. The OutputWriter class can write h5 and xdmf 
@@ -60,7 +62,7 @@ class OutputWriter:
     """
     def __init__(self, input_reader: InputReader, unit_handler: UnitHandler, domain_information: DomainInformation,
         material_manager: MaterialManager, levelset_handler: LevelsetHandler, derivative_stencil_conservatives: SpatialDerivative,
-        derivative_stencil_geometry : Union[SpatialDerivative, None], stream: bool, adios2_cfg: str = './adios2.xml') -> None:
+        derivative_stencil_geometry : Union[SpatialDerivative, None], stream: bool, adios2_cfg: str = './adios2.xml', time_steps_to_send: int = 10) -> None:
 
         # GENERAL
         self.case_name      = input_reader.case_name
@@ -110,12 +112,12 @@ class OutputWriter:
 
         #ADIOS2
         if stream:
-            self.adios = adios2.ADIOS(adios2_cfg)
+            self.adios = adios2.ADIOS(adios2_cfg, comm)
             self.io     = self.adios.DeclareIO("writerIO")
-            self.engine = self.io.Open(self.save_path+"/atmo_sol", adios2.Mode.Write) 
+            self.engine = self.io.Open(os.path.join(self.save_path,self.case_name), adios2.Mode.Write, comm) 
             self.nprocessed = 0
             self.var_id = {}
-            self.nt = 10
+            self.nt = time_steps_to_send
             quantities = []
             for key in ["primes", "cons"]:
                     if key in self.output_quantities.keys():

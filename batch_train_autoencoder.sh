@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=VAE
 #SBATCH --partition=boost_usr_prod
-#SBATCH --nodes=1
-#SBATCH --time=1:00:00
+#SBATCH --nodes=16
+#SBATCH --time=24:00:00
 #SBATCH --out=VAE.%j
 #SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=4
@@ -39,8 +39,9 @@ export BATCH_SIZE=8
  #--fine_tune_recon --pre_trained_pth /scratch/cfd/gonzalez/flowgen/experiments/VAE-40/lightning_logs/version_1511174/checkpoints/epoch=74-step=42225.ckpt \
 
 srun python train_autoencoder.py --save_path experiments --devices $SLURM_NTASKS_PER_NODE --nodes $SLURM_NNODES \
- --batch_size $BATCH_SIZE --lr 5e-4 --epochs 500 \
- --data_path /leonardo_work/EUHPC_B20_015/HIT_LES_COMP --cases case1 case2 case3 --seq_len 5 5 --vae_params vae_config_8.yaml \
- --overfit_batches 100 --beta 0 --accumulate_grad_batches $((256 / ($SLURM_NTASKS * $BATCH_SIZE))) \
+ --batch_size $BATCH_SIZE --lr 1e-4 --epochs 1500 \
+ --data_path /leonardo_work/EUHPC_B20_015/HIT_LES_COMP/ --cases case1 case2 case3 --seq_len 5 5 --vae_params vae_config_8.yaml \
+ --overfit_batches 0 --beta 0 --accumulate_grad_batches $((512 / ($SLURM_NTASKS * $BATCH_SIZE))) \
+ --ckpt_path /leonardo_work/EUHPC_B20_015/flowgen/.aim/None/77a6c516be3e46b19fb16ef1/checkpoints/epoch=890-step=150579.ckpt
 #########################
 

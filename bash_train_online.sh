@@ -1,6 +1,12 @@
 #!/bin/bash
-sbatch batch_train_online.sh
+# Start simulations first
 cd simulations/HIT/
-rm -r  -f train_online/*.sst
-sbatch batch_test.sh
+rm -rf train_online/*.sst
+sbatch batch_run_stream.sh
 cd ../../
+
+# Wait for simulations to initialize
+sleep 5  # Adjust based on your system
+
+# Then start training
+sbatch batch_train_online.sh
