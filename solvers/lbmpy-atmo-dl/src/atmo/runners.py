@@ -1,1 +1,0 @@
-from atmo.atmospheric_periodic import AtmosphericPeriodic
