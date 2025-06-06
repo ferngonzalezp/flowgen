@@ -1,0 +1,3 @@
+[submodule "solvers/jaxfluids"]
+	path = solvers/jaxfluids
+	url = https://github.com/ferngonzalezp/jaxfluids.git
